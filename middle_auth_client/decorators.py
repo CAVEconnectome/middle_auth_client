@@ -48,6 +48,6 @@ def requires_role(role):
             else:
                 resp = flask.Response("Missing role: {0}".format(role), 403)
                 return resp
-
+           
         return decorated_function
     return decorator
