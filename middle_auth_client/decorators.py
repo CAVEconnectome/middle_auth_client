@@ -2,10 +2,16 @@ from functools import wraps
 import flask
 import json
 import os
+import redis
+
+r = redis.Redis(
+        host=os.environ.get('REDISHOST', 'localhost'),
+        port=int(os.environ.get('REDISPORT', 6379)))
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 
-def auth_required(redis):
+
+def auth_required():
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -20,7 +26,7 @@ def auth_required(redis):
                 return resp
             else:
                 token = token.split(' ')[1] # remove schema
-                cached_user_data = redis.get("token_" + token)
+                cached_user_data = r.get("token_" + token)
 
                 if cached_user_data:
                     flask.g.auth_user = json.loads(cached_user_data.decode('utf-8'))
