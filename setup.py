@@ -24,11 +24,11 @@ with open('requirements.txt', 'r') as f:
 
 setup(
     version=find_version("middle_auth_client", "__init__.py"),
-    name='middle-auth-client',
-    description='tools for helping web services and users interact with the middle-auth-service via flask and python',
+    name='middle_auth_client',
+    description='tools for helping web services and users interact with the middle_auth_service via flask and python',
     author='Chris Jordan',
     author_email='chris@eyewire.org',
-    url='https://github.com/seung-lab/middle-auth-client',
+    url='https://github.com/seung-lab/middle_auth_client',
     packages=find_packages('middle_auth_client'),
     package_dir={'': 'middle_auth_client'},
     include_package_data=True,
