@@ -29,8 +29,7 @@ setup(
     author='Chris Jordan',
     author_email='chris@eyewire.org',
     url='https://github.com/seung-lab/middle_auth_client',
-    packages=find_packages('middle_auth_client'),
-    package_dir={'': 'middle_auth_client'},
+    packages=['middle_auth_client'],
     include_package_data=True,
     install_requires=required
 )
