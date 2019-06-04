@@ -14,6 +14,11 @@ AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if hasattr(flask.g, 'auth_token'):
+            # if authorization header has already been parsed, don't need to re-parse
+            # this allows auth_required to be an optional decorator if auth_requires_role is also used
+            return f(*args, **kwargs)
+
         token = flask.request.headers.get('authorization')
         if not token:
             resp = flask.Response("Unauthorized", 401)
@@ -37,15 +42,40 @@ def auth_required(f):
                 return resp
     return decorated_function
 
-def requires_role(role):
+def auth_requires_roles(*required_roles):
     def decorator(f):
         @wraps(f)
+        @auth_required
         def decorated_function(*args, **kwargs):
-            if role in flask.g.auth_user['roles']:
-                return f(*args, **kwargs)
-            else:
-                resp = flask.Response("Missing role: {0}".format(role), 403)
+            users_roles = flask.g.auth_user['roles']
+            missing_roles = []
+
+            for role in required_roles:
+                if not role in users_roles:
+                    missing_roles += [role]
+
+            if missing_roles:
+                resp = flask.Response("Missing role(s): {0}".format(missing_roles), 403)
                 return resp
+            else:
+                return f(*args, **kwargs)
+
+        return decorated_function
+    return decorator
+
+def auth_requires_roles_or(*required_roles):
+    def decorator(f):
+        @wraps(f)
+        @auth_required
+        def decorated_function(*args, **kwargs):
+            users_roles = flask.g.auth_user['roles']
+
+            for role in required_roles:
+                if role in users_roles:
+                    return f(*args, **kwargs)
+
+            resp = flask.Response("Requires one of the following roles: {0}".format(list(required_roles)), 403)
+            return resp
            
         return decorated_function
     return decorator
