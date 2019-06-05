@@ -63,7 +63,7 @@ def auth_requires_roles(*required_roles):
         return decorated_function
     return decorator
 
-def auth_requires_roles_or(*required_roles):
+def auth_requires_roles_any(*required_roles):
     def decorator(f):
         @wraps(f)
         @auth_required
