@@ -24,9 +24,9 @@ def auth_required(f):
         update_cookie = False
         cookie_name = 'middle_auth_token'
 
-        if flask.request.environ.get('HTTP_ORIGIN'): # cors request
-            auth_header = flask.request.headers.get('authorization')
+        auth_header = flask.request.headers.get('authorization')
 
+        if auth_header or flask.request.environ.get('HTTP_ORIGIN'):
             if not auth_header:
                 resp = flask.Response("Unauthorized", 401)
                 resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '"'
@@ -37,7 +37,7 @@ def auth_required(f):
                 return resp
 
             token = auth_header.split(' ')[1] # remove schema
-        else: # non cors i.e. direct browser access
+        else: # direct browser access, or a non-browser request missing auth header (user error) TODO: check user agent to deliver 401 in this case
             cookie_token = flask.request.cookies.get(cookie_name)
             query_param_token = flask.request.args.get('token')
 
