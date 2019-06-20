@@ -21,12 +21,14 @@ def auth_required(f):
             return f(*args, **kwargs)
 
         token = None
+        cached_user_data = None
         update_cookie = False
         cookie_name = 'middle_auth_token'
 
         auth_header = flask.request.headers.get('authorization')
+        programmatic_access = auth_header or flask.request.environ.get('HTTP_ORIGIN')
 
-        if auth_header or flask.request.environ.get('HTTP_ORIGIN'):
+        if programmatic_access:
             if not auth_header:
                 resp = flask.Response("Unauthorized", 401)
                 resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '"'
@@ -42,23 +44,20 @@ def auth_required(f):
             query_param_token = flask.request.args.get('token')
 
             update_cookie = cookie_token != query_param_token # if token changes, update it
-
             token = query_param_token or cookie_token
 
-            if not token:
-                return flask.redirect('https://' + AUTH_URI + '/authorize?redirect=' + quote(flask.request.url), code=302)
-
-        cached_user_data = r.get("token_" + token)
+        cached_user_data = r.get("token_" + token) if token else None
 
         if cached_user_data:
             flask.g.auth_user = json.loads(cached_user_data.decode('utf-8'))
-            flask.g.auth_token = token
             resp = f(*args, **kwargs)
 
             if update_cookie:
                 resp.set_cookie(cookie_name, token, secure=True, httponly=True)
 
             return resp
+        elif not programmatic_access:
+            return flask.redirect('https://' + AUTH_URI + '/authorize?redirect=' + quote(flask.request.url), code=302)
         else:
             resp = flask.Response("Invalid/Expired Token", 401)
             resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '", error="invalid_token", error_description="Invalid/Expired Token"'
