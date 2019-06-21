@@ -4,6 +4,7 @@ import json
 import os
 import redis
 from urllib.parse import quote
+from furl import furl
 
 r = redis.Redis(
         host=os.environ.get('REDISHOST', 'localhost'),
@@ -21,8 +22,6 @@ def auth_required(f):
             return f(*args, **kwargs)
 
         token = None
-        cached_user_data = None
-        update_cookie = False
         cookie_name = 'middle_auth_token'
 
         auth_header = flask.request.headers.get('authorization')
@@ -40,22 +39,20 @@ def auth_required(f):
 
             token = auth_header.split(' ')[1] # remove schema
         else: # direct browser access, or a non-browser request missing auth header (user error) TODO: check user agent to deliver 401 in this case
-            cookie_token = flask.request.cookies.get(cookie_name)
             query_param_token = flask.request.args.get('token')
 
-            update_cookie = cookie_token != query_param_token # if token changes, update it
-            token = query_param_token or cookie_token
+            if query_param_token:
+                resp = flask.make_response(flask.redirect(furl(flask.request.url).remove(['token']).url, code=302))
+                resp.set_cookie(cookie_name, query_param_token, secure=True, httponly=True)
+                return resp
+
+            token = flask.request.cookies.get(cookie_name)
 
         cached_user_data = r.get("token_" + token) if token else None
 
         if cached_user_data:
             flask.g.auth_user = json.loads(cached_user_data.decode('utf-8'))
-            resp = f(*args, **kwargs)
-
-            if update_cookie:
-                resp.set_cookie(cookie_name, token, secure=True, httponly=True)
-
-            return resp
+            return f(*args, **kwargs)
         elif not programmatic_access:
             return flask.redirect('https://' + AUTH_URI + '/authorize?redirect=' + quote(flask.request.url), code=302)
         else:
