@@ -52,6 +52,7 @@ def auth_required(f):
 
         if cached_user_data:
             flask.g.auth_user = json.loads(cached_user_data.decode('utf-8'))
+            flask.g.auth_token = token
             return f(*args, **kwargs)
         elif not programmatic_access:
             return flask.redirect('https://' + AUTH_URI + '/authorize?redirect=' + quote(flask.request.url), code=302)
