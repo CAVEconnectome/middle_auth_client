@@ -25,7 +25,9 @@ def auth_required(f):
         cookie_name = 'middle_auth_token'
 
         auth_header = flask.request.headers.get('authorization')
-        programmatic_access = auth_header or flask.request.environ.get('HTTP_ORIGIN')
+        xrw_header = flask.request.headers.get('X-Requested-With')
+
+        programmatic_access = xrw_header or auth_header or flask.request.environ.get('HTTP_ORIGIN')
 
         if programmatic_access:
             if not auth_header:
