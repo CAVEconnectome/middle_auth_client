@@ -91,8 +91,6 @@ def auth_requires_permission(required_permission):
 
             dataset = table_id_to_dataset.get(table_id)
 
-            flask.g.dataset = dataset
-
             if dataset is not None:
                 permissions_for_dataset = flask.g.auth_user['permissions'].get(dataset, {'admin': False, 'edit': False, 'view': False})
                 has_permission = permissions_for_dataset.get(required_permission)
@@ -103,7 +101,7 @@ def auth_requires_permission(required_permission):
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
                     return resp
             else:
-                resp = flask.Response("Internal Error", 500) # or just return 403 because the dataset doesn't exist
+                resp = flask.Response("Invalid table", 400)
                 return resp
 
         return decorated_function
