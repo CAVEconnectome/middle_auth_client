@@ -82,9 +82,9 @@ def auth_requires_permission(required_permission):
         @auth_required
         def decorated_function(table_id, *args, **kwargs):
             table_id_to_dataset = {
-                "pinky100_sv16": "pink100",
-                "pinky100_neo1": "pink100",
-                "pinky100_rv5": "pink100",
+                "pinky100_sv16": "pinky100",
+                "pinky100_neo1": "pinky100",
+                "pinky100_rv5": "pinky100",
                 "fly_v26": "fafb",
                 "fly_v31": "fafb",
             }
