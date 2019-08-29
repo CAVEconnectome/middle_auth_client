@@ -103,7 +103,7 @@ def auth_requires_permission(required_permission):
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
                     return resp
             else:
-                resp = flask.Response("Invalid table", 400)
+                resp = flask.Response("Invalid table_id", 400)
                 return resp
 
         return decorated_function
