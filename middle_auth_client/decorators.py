@@ -81,6 +81,8 @@ def auth_requires_permission(required_permission):
         @wraps(f)
         @auth_required
         def decorated_function(table_id, *args, **kwargs):
+            required_level = ['none', 'view', 'edit'].index(required_permission)
+
             table_id_to_dataset = {
                 "pinky100_sv16": "pinky100",
                 "pinky100_neo1": "pinky100",
@@ -92,8 +94,8 @@ def auth_requires_permission(required_permission):
             dataset = table_id_to_dataset.get(table_id)
 
             if dataset is not None:
-                permissions_for_dataset = flask.g.auth_user['permissions'].get(dataset, {'admin': False, 'edit': False, 'view': False})
-                has_permission = permissions_for_dataset.get(required_permission)
+                level_for_dataset = flask.g.auth_user['permissions'].get(dataset, 0)
+                has_permission = level_for_dataset >= required_level
 
                 if has_permission:
                     return f(*((table_id,) + args), **kwargs)
