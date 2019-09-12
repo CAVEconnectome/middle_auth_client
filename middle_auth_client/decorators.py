@@ -98,7 +98,7 @@ def auth_requires_permission(required_permission):
                 has_permission = level_for_dataset >= required_level
 
                 if has_permission:
-                    return f(*((table_id,) + args), **kwargs)
+                    return f(*args, **{**kwargs, **{'table_id': table_id}})
                 else:
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
                     return resp
