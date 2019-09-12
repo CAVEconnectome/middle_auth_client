@@ -87,7 +87,7 @@ def auth_requires_permission(required_permission):
                 "pinky100_sv16": "pinky100",
                 "pinky100_neo1": "pinky100",
                 "pinky100_rv5": "pinky100",
-                "fly_v26": "fafb",
+                "fly_v26": "fafb_sandbox",
                 "fly_v31": "fafb",
             }
 
