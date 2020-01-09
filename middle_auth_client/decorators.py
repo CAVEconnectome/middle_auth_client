@@ -64,6 +64,7 @@ def auth_required(f):
             return resp
     return decorated_function
 
+
 def auth_requires_admin(f):
     @wraps(f)
     @auth_required
@@ -76,6 +77,7 @@ def auth_requires_admin(f):
 
     return decorated_function
 
+
 def auth_requires_permission(required_permission):
     def decorator(f):
         @wraps(f)
@@ -86,12 +88,17 @@ def auth_requires_permission(required_permission):
             table_id_to_dataset = {
                 "pinky100_sv16": "pinky100",
                 "pinky100_neo1": "pinky100",
-                "pinky100_rv5": "pinky100",
                 "fly_v26": "fafb_sandbox",
                 "fly_v31": "fafb",
             }
 
-            dataset = table_id_to_dataset.get(table_id)
+            if table_id in table_id_to_dataset:
+                dataset = table_id_to_dataset.get(table_id)
+            else:
+                if table_id.startswith("pinky100_rv"):
+                    dataset = "pinky100"
+                else:
+                    raise Exception("Unknown dataset")
 
             if dataset is not None:
                 level_for_dataset = flask.g.auth_user['permissions'].get(dataset, 0)
