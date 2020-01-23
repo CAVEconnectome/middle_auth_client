@@ -95,7 +95,8 @@ def auth_requires_permission(required_permission):
             if table_id in table_id_to_dataset:
                 dataset = table_id_to_dataset.get(table_id)
             else:
-                if table_id.startswith("pinky100_rv"):
+                if table_id.startswith("pinky100_rv") or \
+                        table_id.startswith("pinky100_arv"):
                     dataset = "pinky100"
                 else:
                     raise Exception("Unknown dataset")
