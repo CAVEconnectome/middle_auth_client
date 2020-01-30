@@ -2,16 +2,30 @@ from functools import wraps
 import flask
 import json
 import os
-import redis
 from urllib.parse import quote
 from furl import furl
 
-r = redis.Redis(
+AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
+USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
+
+r = None
+if USE_REDIS:
+    import redis
+    r = redis.Redis(
         host=os.environ.get('REDISHOST', 'localhost'),
         port=int(os.environ.get('REDISPORT', 6379)))
+else:
+    import requests
 
-AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
-
+def get_user_cache(token):
+    if USE_REDIS:
+        cached_user_data = r.get("token_" + token)
+        if cached_user_data:
+            return json.loads(cached_user_data.decode('utf-8'))
+    else:
+        user_request = requests.get('https://' + AUTH_URI + '/user/me', headers={'authorization': 'Bearer ' + token})
+        if user_request.status_code == 200:
+            return user_request.json()
 
 def auth_required(f):
     @wraps(f)
@@ -50,10 +64,10 @@ def auth_required(f):
 
             token = flask.request.cookies.get(cookie_name)
 
-        cached_user_data = r.get("token_" + token) if token else None
+        cached_user_data = get_user_cache(token) if token else None
 
         if cached_user_data:
-            flask.g.auth_user = json.loads(cached_user_data.decode('utf-8'))
+            flask.g.auth_user = cached_user_data
             flask.g.auth_token = token
             return f(*args, **kwargs)
         elif not programmatic_access:
