@@ -23,7 +23,7 @@ def get_user_cache(token):
         if cached_user_data:
             return json.loads(cached_user_data.decode('utf-8'))
     else:
-        user_request = requests.get('https://' + AUTH_URI + '/user/me', headers={'authorization': 'Bearer ' + token})
+        user_request = requests.get('https://' + AUTH_URI + '/user/cache', headers={'authorization': 'Bearer ' + token})
         if user_request.status_code == 200:
             return user_request.json()
 
