@@ -23,7 +23,7 @@ def get_user_cache(token):
         if cached_user_data:
             return json.loads(cached_user_data.decode('utf-8'))
     else:
-        user_request = requests.get('https://' + AUTH_URI + '/user/cache', headers={'authorization': 'Bearer ' + token})
+        user_request = requests.get('https://' + AUTH_URI + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
         if user_request.status_code == 200:
             return user_request.json()
 
@@ -71,7 +71,7 @@ def auth_required(f):
             flask.g.auth_token = token
             return f(*args, **kwargs)
         elif not programmatic_access:
-            return flask.redirect('https://' + AUTH_URI + '/authorize?redirect=' + quote(flask.request.url), code=302)
+            return flask.redirect('https://' + AUTH_URI + '/api/v1/authorize?redirect=' + quote(flask.request.url), code=302)
         else:
             resp = flask.Response("Invalid/Expired Token", 401)
             resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '", error="invalid_token", error_description="Invalid/Expired Token"'
