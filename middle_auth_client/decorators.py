@@ -43,14 +43,16 @@ def auth_required(f):
 
         programmatic_access = xrw_header or auth_header or flask.request.environ.get('HTTP_ORIGIN')
 
+        AUTHORIZE_URI = 'https://' + AUTH_URI + '/api/v1/authorize';
+
         if programmatic_access:
             if not auth_header:
                 resp = flask.Response("Unauthorized", 401)
-                resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '"'
+                resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '"'
                 return resp
             elif not auth_header.startswith('Bearer '):
                 resp = flask.Response("Invalid Request", 400)
-                resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
+                resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
                 return resp
 
             token = auth_header.split(' ')[1] # remove schema
@@ -71,10 +73,10 @@ def auth_required(f):
             flask.g.auth_token = token
             return f(*args, **kwargs)
         elif not programmatic_access:
-            return flask.redirect('https://' + AUTH_URI + '/api/v1/authorize?redirect=' + quote(flask.request.url), code=302)
+            return flask.redirect(AUTHORIZE_URI + '?redirect=' + quote(flask.request.url), code=302)
         else:
             resp = flask.Response("Invalid/Expired Token", 401)
-            resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTH_URI + '", error="invalid_token", error_description="Invalid/Expired Token"'
+            resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '", error="invalid_token", error_description="Invalid/Expired Token"'
             return resp
     return decorated_function
 
