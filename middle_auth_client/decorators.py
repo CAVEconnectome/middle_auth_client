@@ -30,6 +30,9 @@ def get_user_cache(token):
 def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if flask.request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         if hasattr(flask.g, 'auth_token'):
             # if authorization header has already been parsed, don't need to re-parse
             # this allows auth_required to be an optional decorator if auth_requires_role is also used
@@ -85,6 +88,9 @@ def auth_requires_admin(f):
     @wraps(f)
     @auth_required
     def decorated_function(*args, **kwargs):
+        if flask.request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         if not flask.g.auth_user['admin']:
             resp = flask.Response("Requires superadmin privilege.", 403)
             return resp
@@ -99,6 +105,9 @@ def auth_requires_permission(required_permission):
         @wraps(f)
         @auth_required
         def decorated_function(table_id, *args, **kwargs):
+            if flask.request.method == 'OPTIONS':
+                return f(*args, **{**kwargs, **{'table_id': table_id}})
+
             required_level = ['none', 'view', 'edit'].index(required_permission)
 
             table_id_to_dataset = {
