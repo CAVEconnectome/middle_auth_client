@@ -141,3 +141,20 @@ def auth_requires_permission(required_permission):
 
         return decorated_function
     return decorator
+
+def auth_requires_group(required_group):
+    def decorator(f):
+        @wraps(f)
+        @auth_required
+        def decorated_function(*args, **kwargs):
+            if flask.request.method == 'OPTIONS':
+                return f(*args, **kwargs)
+
+            if required_group not in flask.g.auth_user['groups']:
+                resp = flask.Response("Requires membership of group: {0}".format(required_group), 403)
+                return resp
+
+            return f(*args, **kwargs)
+
+        return decorated_function
+    return decorator
