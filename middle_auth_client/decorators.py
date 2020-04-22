@@ -71,7 +71,7 @@ def auth_required(f):
                 token = auth_header.split(' ')[1] # remove schema
         else: # direct browser access, or a non-browser request missing auth header (user error) TODO: check user agent to deliver 401 in this case
             if query_param_token:
-                resp = flask.make_response(flask.redirect(furl(flask.request.url).remove([TOKEN_NAME]).url, code=302))
+                resp = flask.make_response(flask.redirect(furl(flask.request.url).remove([TOKEN_NAME, 'token']).url, code=302))
                 resp.set_cookie(cookie_name, query_param_token, secure=True, httponly=True)
                 return resp
 
