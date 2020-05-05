@@ -6,6 +6,9 @@ from urllib.parse import quote
 from furl import furl
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
+AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
+STICKY_AUTH_URL = os.environ.get('STICKY_AUTH_URL', AUTH_URL)
+
 USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
 TOKEN_NAME = os.environ.get('TOKEN_NAME', "middle_auth_token")
 
@@ -24,7 +27,7 @@ def get_user_cache(token):
         if cached_user_data:
             return json.loads(cached_user_data.decode('utf-8'))
     else:
-        user_request = requests.get('https://' + AUTH_URI + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
+        user_request = requests.get('https://' + AUTH_URL + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
         if user_request.status_code == 200:
             return user_request.json()
 
@@ -47,7 +50,7 @@ def auth_required(f):
 
         programmatic_access = xrw_header or auth_header or flask.request.environ.get('HTTP_ORIGIN')
 
-        AUTHORIZE_URI = 'https://' + AUTH_URI + '/api/v1/authorize'
+        AUTHORIZE_URI = 'https://' + STICKY_AUTH_URL + '/api/v1/authorize'
 
         query_param_token = flask.request.args.get(TOKEN_NAME)
 
