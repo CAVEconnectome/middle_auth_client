@@ -124,6 +124,8 @@ def auth_requires_permission(required_permission):
             table_id_to_dataset = {
                 "pinky100_sv16": "pinky100",
                 "pinky100_neo1": "pinky100",
+                "minnie3_v0": "minnie65",
+                "anm0": "minnie65",
                 "fly_v26": "fafb_sandbox",
                 "fly_v31": "fafb",
             }
