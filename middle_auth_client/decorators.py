@@ -4,6 +4,7 @@ import json
 import os
 from urllib.parse import quote
 from furl import furl
+import cachetools.func
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
@@ -11,6 +12,8 @@ STICKY_AUTH_URL = os.environ.get('STICKY_AUTH_URL', AUTH_URL)
 
 USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
 TOKEN_NAME = os.environ.get('TOKEN_NAME', "middle_auth_token")
+CACHE_MAXSIZE = int(os.environ.get('TOKEN_CACHE_MAXSIZE', "1024"))
+CACHE_TTL = int(os.environ.get('TOKEN_CACHE_TTL', "300"))
 
 r = None
 if USE_REDIS:
@@ -21,15 +24,19 @@ if USE_REDIS:
 else:
     import requests
 
+@cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+def user_cache_http(token):
+    user_request = requests.get('https://' + AUTH_URL + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
+    if user_request.status_code == 200:
+        return user_request.json()
+
 def get_user_cache(token):
     if USE_REDIS:
         cached_user_data = r.get("token_" + token)
         if cached_user_data:
             return json.loads(cached_user_data.decode('utf-8'))
     else:
-        user_request = requests.get('https://' + AUTH_URL + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
-        if user_request.status_code == 200:
-            return user_request.json()
+        return user_cache_http(token)
 
 def auth_required(f):
     @wraps(f)
