@@ -137,13 +137,15 @@ def auth_requires_permission(required_permission):
                 "anm0": "minnie65",
                 "fly_v26": "fafb_sandbox",
                 "fly_v31": "fafb",
+                "fly_arv0": "fafb"
             }
 
             if table_id in table_id_to_dataset:
                 dataset = table_id_to_dataset.get(table_id)
             else:
                 if table_id.startswith("pinky100_rv") or \
-                        table_id.startswith("pinky100_arv"):
+                        table_id.startswith("pinky100_arv") or \
+                        table_id.startswith("pinky_nf"):
                     dataset = "pinky100"
                 else:
                     raise Exception("Unknown dataset")
