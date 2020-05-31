@@ -142,13 +142,14 @@ def auth_requires_permission(required_permission):
 
             if table_id in table_id_to_dataset:
                 dataset = table_id_to_dataset.get(table_id)
+            elif table_id.startswith("pinky100_rv") or \
+                    table_id.startswith("pinky100_arv") or \
+                    table_id.startswith("pinky_nf"):
+                dataset = "pinky100"
+            elif table_id.startswith("minnie3_v"):
+                dataset = "minnie65"
             else:
-                if table_id.startswith("pinky100_rv") or \
-                        table_id.startswith("pinky100_arv") or \
-                        table_id.startswith("pinky_nf"):
-                    dataset = "pinky100"
-                else:
-                    raise Exception("Unknown dataset")
+                raise Exception("Unknown dataset")
 
             if dataset is not None:
                 level_for_dataset = flask.g.auth_user['permissions'].get(dataset, 0)
