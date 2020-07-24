@@ -5,6 +5,7 @@ import os
 from urllib.parse import quote
 from furl import furl
 import cachetools.func
+import requests
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
@@ -21,8 +22,6 @@ if USE_REDIS:
     r = redis.Redis(
         host=os.environ.get('REDISHOST', 'localhost'),
         port=int(os.environ.get('REDISPORT', 6379)))
-else:
-    import requests
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def user_cache_http(token):
@@ -37,6 +36,17 @@ def get_user_cache(token):
             return json.loads(cached_user_data.decode('utf-8'))
     else:
         return user_cache_http(token)
+
+@cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+def is_root_public(table_id, root_id, token):
+    if root_id is None:
+        return False
+
+    cip_url = 'https://{}/api/v1/table/{}/root/{}/is_public'.format(AUTH_URL, table_id, root_id)
+
+    user_request = requests.get(cip_url, headers={'authorization': 'Bearer ' + token}, timeout=5)
+    if user_request.status_code == 200:
+        return user_request.json()
 
 def auth_required(f):
     @wraps(f)
@@ -118,7 +128,7 @@ def auth_requires_admin(f):
     return decorated_function
 
 
-def auth_requires_permission(required_permission):
+def auth_requires_permission(required_permission, node_key='node_id'):
     def decorator(f):
         @wraps(f)
         @auth_required
@@ -155,7 +165,7 @@ def auth_requires_permission(required_permission):
                 level_for_dataset = flask.g.auth_user['permissions'].get(dataset, 0)
                 has_permission = level_for_dataset >= required_level
 
-                if has_permission:
+                if has_permission or (required_level < 2 and is_root_public(table_id, kwargs.get(node_key), flask.g.auth_token)):
                     return f(*args, **{**kwargs, **{'table_id': table_id}})
                 else:
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
