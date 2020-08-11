@@ -23,6 +23,27 @@ if USE_REDIS:
         host=os.environ.get('REDISHOST', 'localhost'),
         port=int(os.environ.get('REDISPORT', 6379)))
 
+class AuthorizationError(Exception):
+    pass
+
+def get_usernames(user_ids, token=None):
+    if token is None:
+        raise ValueError('missing token')
+    if len(user_ids):
+        users_request = requests.get('https://' + AUTH_URL + '/api/v1/user?id={}'.format(','.join(map(str, user_ids))),
+            headers={'authorization': 'Bearer ' + token},
+            timeout=5)
+
+        if users_request.status_code in [401, 403]:
+            raise AuthorizationError(users_request.text)
+        elif users_request.status_code == 200:
+            id_to_name = {x['id']: x['name'] for x in users_request.json()}
+            return [id_to_name[x] for x in user_ids]
+        else:
+            raise RuntimeError('get_usernames request failed')
+    else:
+        return []
+
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def user_cache_http(token):
     user_request = requests.get('https://' + AUTH_URL + '/api/v1/user/cache', headers={'authorization': 'Bearer ' + token})
@@ -47,6 +68,8 @@ def is_root_public(table_id, root_id, token):
     user_request = requests.get(cip_url, headers={'authorization': 'Bearer ' + token}, timeout=5)
     if user_request.status_code == 200:
         return user_request.json()
+    else:
+        raise RuntimeError('is_root_public request failed')
 
 def auth_required(f):
     @wraps(f)
