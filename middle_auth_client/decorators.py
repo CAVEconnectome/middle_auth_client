@@ -30,7 +30,7 @@ def get_usernames(user_ids, token=None):
     if token is None:
         raise ValueError('missing token')
     if len(user_ids):
-        users_request = requests.get(f"https://{AUTH_URL}/api/v1/user?id={','.join(map(str, user_ids))}",
+        users_request = requests.get(f"https://{AUTH_URL}/api/v1/username?id={','.join(map(str, user_ids))}",
             headers={'authorization': 'Bearer ' + token},
             timeout=5)
 
