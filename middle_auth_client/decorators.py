@@ -221,7 +221,12 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                 raise Exception("Unknown dataset")
 
             if dataset is not None:
-                has_permission = required_permission in flask.g.auth_user['permissions_v2'].get(dataset, [])
+                has_permission = required_permission in flask.g.auth_user.get('permissions_v2', {}).get(dataset, [])
+
+                if not 'permissions_v2' in flask.g.auth_user: # backwards compatability
+                    required_level = ['none', 'view', 'edit'].index(required_permission)
+                    level_for_dataset = flask.g.auth_user.get('permissions', {}).get(dataset, 0)
+                    has_permission = level_for_dataset >= required_level
 
                 if has_permission or flask.g.public_access(): # public_access won't be true for edit requests
                     return f(*args, **{**kwargs, **{'table_id': table_id}})
