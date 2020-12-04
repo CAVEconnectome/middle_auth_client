@@ -206,7 +206,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
         def decorated_function(table_id, *args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
-            service=flask.current_app.config['SERVICE_NAME']
+            service=flask.current_app.config['AUTH_SERVICE_NAME']
             try:
                 dataset = dataset_from_service(service, table_id, service_token)
             except RuntimeError:
