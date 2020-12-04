@@ -207,6 +207,8 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
             service_namespace=flask.current_app.config['AUTH_SERVICE_NAMESPACE']
+            if service_token is None:
+                service_token = flask.current_app.config.get('AUTH_TOKEN', "")
             try:
                 dataset = dataset_from_table_id(service_namespace, table_id, service_token)
             except RuntimeError:
