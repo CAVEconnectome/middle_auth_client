@@ -207,9 +207,9 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
             service_namespace=flask.current_app.config['AUTH_SERVICE_NAMESPACE']
-            service_token = flask.current_app.config.get('AUTH_TOKEN', "")
+            service_token_local = service_token if service_token else flask.current_app.config.get('AUTH_TOKEN', "")
             try:
-                dataset = dataset_from_table_id(service_namespace, table_id, service_token)
+                dataset = dataset_from_table_id(service_namespace, table_id, service_token_local)
             except RuntimeError:
                 resp = flask.Response("Invalid table_id for service", 400)
                 return resp
