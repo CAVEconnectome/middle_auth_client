@@ -9,6 +9,7 @@ import requests
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
+INFO_URL = os.environ.get('INFO_URL', 'localhost:5000/info')
 STICKY_AUTH_URL = os.environ.get('STICKY_AUTH_URL', AUTH_URL)
 
 USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
@@ -81,6 +82,15 @@ def table_has_public(table_id, token):
         return req.json()
     else:
         raise RuntimeError('has_public request failed')
+
+@cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+def dataset_from_service(service, table_id, token):
+    url = f"https://{INFO_URL}/api/v2/tablemapping/service/{service}/table/{table_id}/permission_group"
+    req = requests.get(url, headers={'authorization': 'Bearer ' + token}, timeout=5)
+    if req.status_code == 200:
+        return req.json()
+    else:
+        raise RuntimeError(f'failed to lookup dataset for service {service} & table_id: {table_id}: status code {req.status_code}. content: {req.content}')
 
 def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
     def decorator(f):
@@ -196,7 +206,9 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
         def decorated_function(table_id, *args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
-
+            service=flask.current_app.config['SERVICE_NAME']
+            dataset = dataset_from_service(service, table_id, service_token)
+           
             table_id_to_dataset = {
                 "pinky100_sv16": "pinky100",
                 "pinky100_neo1": "pinky100",
