@@ -84,13 +84,13 @@ def table_has_public(table_id, token):
         raise RuntimeError('has_public request failed')
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
-def dataset_from_service(service, table_id, token):
-    url = f"https://{INFO_URL}/api/v2/tablemapping/service/{service}/table/{table_id}/permission_group"
+def dataset_from_table_id(service_namespace, table_id, token):
+    url = f"https://{INFO_URL}/api/v2/tablemapping/service/{service_namespace}/table/{table_id}/permission_group"
     req = requests.get(url, headers={'authorization': 'Bearer ' + token}, timeout=5)
     if req.status_code == 200:
         return req.json()
     else:
-        raise RuntimeError(f'failed to lookup dataset for service {service} & table_id: {table_id}: status code {req.status_code}. content: {req.content}')
+        raise RuntimeError(f'failed to lookup dataset for service {service_namespace} & table_id: {table_id}: status code {req.status_code}. content: {req.content}')
 
 def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
     def decorator(f):
@@ -206,9 +206,9 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
         def decorated_function(table_id, *args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
-            service=flask.current_app.config['AUTH_SERVICE_NAME']
+            service_namespace=flask.current_app.config['AUTH_SERVICE_NAMESPACE']
             try:
-                dataset = dataset_from_service(service, table_id, service_token)
+                dataset = dataset_from_table_id(service_namespace, table_id, service_token)
             except RuntimeError:
                 resp = flask.Response("Invalid table_id for service", 400)
                 return resp
