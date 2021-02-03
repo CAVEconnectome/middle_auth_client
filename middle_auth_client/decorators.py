@@ -16,6 +16,8 @@ TOKEN_NAME = os.environ.get('TOKEN_NAME', "middle_auth_token")
 CACHE_MAXSIZE = int(os.environ.get('TOKEN_CACHE_MAXSIZE', "1024"))
 CACHE_TTL = int(os.environ.get('TOKEN_CACHE_TTL', "300"))
 
+AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
+
 r = None
 if USE_REDIS:
     import redis
@@ -27,6 +29,9 @@ class AuthorizationError(Exception):
     pass
 
 def get_usernames(user_ids, token=None):
+    if AUTH_DISABLED:
+        return []
+
     if token is None:
         raise ValueError('missing token')
     if len(user_ids):
@@ -63,6 +68,9 @@ def is_root_public(table_id, root_id, token):
     if root_id is None:
         return False
 
+    if AUTH_DISABLED:
+        return True
+
     url = f"https://{AUTH_URL}/api/v1/table/{table_id}/root/{root_id}/is_public"
 
     req = requests.get(url, headers={'authorization': 'Bearer ' + token}, timeout=5)
@@ -74,6 +82,9 @@ def is_root_public(table_id, root_id, token):
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def table_has_public(table_id, token):
+    if AUTH_DISABLED:
+        return True
+
     url = f"https://{AUTH_URL}/api/v1/table/{table_id}/has_public"
 
     req = requests.get(url, headers={'authorization': 'Bearer ' + token}, timeout=5)
@@ -94,22 +105,6 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                 # this allows auth_required to be an optional decorator if auth_requires_role is also used
                 return f(*args, **kwargs)
 
-            token = None
-            cookie_name = TOKEN_NAME
-
-            auth_header = flask.request.headers.get('authorization')
-            xrw_header = flask.request.headers.get('X-Requested-With')
-
-            programmatic_access = xrw_header or auth_header or flask.request.environ.get('HTTP_ORIGIN')
-
-            AUTHORIZE_URI = 'https://' + STICKY_AUTH_URL + '/api/v1/authorize'
-
-            query_param_token = flask.request.args.get(TOKEN_NAME)
-
-            if not query_param_token:
-                # deprecated
-                query_param_token = flask.request.args.get('token')
-
             flask.g.public_access_cache = None
             def lazy_check_public_access():
                 if flask.g.public_access_cache is None:
@@ -126,6 +121,27 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                 return flask.g.public_access_cache
 
             flask.g.public_access = lazy_check_public_access
+
+            if AUTH_DISABLED:
+                flask.g.auth_user = {'id': 0, 'service_account': False, 'name': 'AUTH_DISABLED', 'email': 'AUTH_DISABLED@AUTH.DISABLED', 'admin': True, 'groups': [], 'permissions': {}}
+                flask.g.auth_token = 'AUTH_DISABLED'
+                return f(*args, **kwargs)
+
+            token = None
+            cookie_name = TOKEN_NAME
+
+            auth_header = flask.request.headers.get('authorization')
+            xrw_header = flask.request.headers.get('X-Requested-With')
+
+            programmatic_access = xrw_header or auth_header or flask.request.environ.get('HTTP_ORIGIN')
+
+            AUTHORIZE_URI = 'https://' + STICKY_AUTH_URL + '/api/v1/authorize'
+
+            query_param_token = flask.request.args.get(TOKEN_NAME)
+
+            if not query_param_token:
+                # deprecated
+                query_param_token = flask.request.args.get('token')
 
             if programmatic_access:
                 if query_param_token:
@@ -228,7 +244,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     level_for_dataset = flask.g.auth_user.get('permissions', {}).get(dataset, 0)
                     has_permission = level_for_dataset >= required_level
 
-                if has_permission or flask.g.public_access(): # public_access won't be true for edit requests
+                if AUTH_DISABLED or has_permission or flask.g.public_access(): # public_access won't be true for edit requests
                     return f(*args, **{**kwargs, **{'table_id': table_id}})
                 else:
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
@@ -248,7 +264,7 @@ def auth_requires_group(required_group):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
 
-            if required_group not in flask.g.auth_user['groups']:
+            if not AUTH_DISABLED and required_group not in flask.g.auth_user['groups']:
                 resp = flask.Response("Requires membership of group: {0}".format(required_group), 403)
                 return resp
 
