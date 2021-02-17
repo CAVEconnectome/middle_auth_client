@@ -127,8 +127,8 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                 flask.g.auth_token = 'AUTH_DISABLED'
                 return f(*args, **kwargs)
 
-            token = None
             cookie_name = TOKEN_NAME
+            token = flask.request.cookies.get(cookie_name)
 
             auth_header = flask.request.headers.get('authorization')
             xrw_header = flask.request.headers.get('X-Requested-With')
@@ -139,32 +139,29 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
 
             query_param_token = flask.request.args.get(TOKEN_NAME)
 
-            if not query_param_token:
-                # deprecated
-                query_param_token = flask.request.args.get('token')
+            if query_param_token:
+                token = query_param_token
+
+            auth_header = flask.request.headers.get('authorization')
+
+            if auth_header:
+                if not auth_header.startswith('Bearer '):
+                    resp = flask.Response("Invalid Request", 400)
+                    resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
+                    return resp
+                else: # auth header takes priority
+                    token = auth_header.split(' ')[1] # remove schema
 
             if programmatic_access:
-                if query_param_token:
-                    token = query_param_token
-                else:
-                    if not auth_header:
-                        if not flask.g.public_access():
-                            resp = flask.Response("Unauthorized", 401)
-                            resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '"'
-                            return resp
-                    elif not auth_header.startswith('Bearer '):
-                        resp = flask.Response("Invalid Request", 400)
-                        resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
-                        return resp
-                    else:
-                        token = auth_header.split(' ')[1] # remove schema
+                if not token and not flask.g.public_access():
+                    resp = flask.Response("Unauthorized", 401)
+                    resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + '"'
+                    return resp
             else: # direct browser access, or a non-browser request missing auth header (user error) TODO: check user agent to deliver 401 in this case
                 if query_param_token:
                     resp = flask.make_response(flask.redirect(furl(flask.request.url).remove([TOKEN_NAME, 'token']).url, code=302))
                     resp.set_cookie(cookie_name, query_param_token, secure=True, httponly=True)
                     return resp
-
-                token = flask.request.cookies.get(cookie_name)
 
             cached_user_data = get_user_cache(token) if token else None
 
