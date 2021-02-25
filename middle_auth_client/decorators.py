@@ -202,7 +202,7 @@ def auth_requires_admin(f):
 
     return decorated_function
 
-def auth_requires_permission(required_permission, public_table_key=None, public_node_key=None, service_token=None):
+def auth_requires_permission(required_permission, public_table_key=None, public_node_key=None, service_token=None, dataset=None):
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission, public_table_key=public_table_key, public_node_key=public_node_key, service_token=service_token)
@@ -210,28 +210,29 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
 
-            table_id_to_dataset = {
-                "pinky100_sv16": "pinky100",
-                "pinky100_neo1": "pinky100",
-                "akhilesh-pinky100-0": "pinky100",
-                "anp0": "pinky100",
-                "minnie3_v0": "minnie65",
-                "anm0": "minnie65",
-                "fly_v26": "fafb_sandbox",
-                "fly_v31": "fafb",
-                "fly_arv0": "fafb"
-            }
+            if dataset is None:
+                table_id_to_dataset = {
+                    "pinky100_sv16": "pinky100",
+                    "pinky100_neo1": "pinky100",
+                    "akhilesh-pinky100-0": "pinky100",
+                    "anp0": "pinky100",
+                    "minnie3_v0": "minnie65",
+                    "anm0": "minnie65",
+                    "fly_v26": "fafb_sandbox",
+                    "fly_v31": "fafb",
+                    "fly_arv0": "fafb"
+                }
 
-            if table_id in table_id_to_dataset:
-                dataset = table_id_to_dataset.get(table_id)
-            elif table_id.startswith("pinky100_rv") or \
-                    table_id.startswith("pinky100_arv") or \
-                    table_id.startswith("pinky_nf"):
-                dataset = "pinky100"
-            elif table_id.startswith("minnie3_v"):
-                dataset = "minnie65"
-            else:
-                raise Exception("Unknown dataset")
+                if table_id in table_id_to_dataset:
+                    dataset = table_id_to_dataset.get(table_id)
+                elif table_id.startswith("pinky100_rv") or \
+                        table_id.startswith("pinky100_arv") or \
+                        table_id.startswith("pinky_nf"):
+                    dataset = "pinky100"
+                elif table_id.startswith("minnie3_v"):
+                    dataset = "minnie65"
+                else:
+                    raise Exception("Unknown dataset")
 
             if dataset is not None:
                 has_permission = required_permission in flask.g.auth_user.get('permissions_v2', {}).get(dataset, [])
