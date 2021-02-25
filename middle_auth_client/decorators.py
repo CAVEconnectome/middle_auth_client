@@ -210,10 +210,10 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
 
+            nonlocal dataset
+
             if table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
-
-            nonlocal dataset
 
             if dataset is None:
                 table_id_to_dataset = {
