@@ -206,11 +206,13 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission, public_table_key=public_table_key, public_node_key=public_node_key, service_token=service_token)
-        def decorated_function(table_id=None, *args, **kwargs):
+        def decorated_function(*args, **kwargs):
             if flask.request.method == 'OPTIONS':
-                return f(*args, **{**kwargs, **{'table_id': table_id}})
+                return f(*args, **kwargs)
 
             nonlocal dataset
+
+            table_id = kwargs.get('table_id')
 
             if table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
@@ -248,7 +250,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     has_permission = level_for_dataset >= required_level
 
                 if AUTH_DISABLED or has_permission or flask.g.public_access(): # public_access won't be true for edit requests
-                    return f(*args, **{**kwargs, **{'table_id': table_id}})
+                    return f(*args, **kwargs)
                 else:
                     resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
                     return resp
