@@ -206,9 +206,12 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission, public_table_key=public_table_key, public_node_key=public_node_key, service_token=service_token)
-        def decorated_function(table_id, *args, **kwargs):
+        def decorated_function(table_id=None, *args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **{**kwargs, **{'table_id': table_id}})
+
+            if table_id is None and dataset is None:
+                return flask.Response("Missing table_id", 400)
 
             nonlocal dataset
 
@@ -234,7 +237,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                 elif table_id.startswith("minnie3_v"):
                     dataset = "minnie65"
                 else:
-                    raise Exception("Unknown dataset")
+                    return flask.Response("Unknown dataset", 400)
 
             if dataset is not None:
                 has_permission = required_permission in flask.g.auth_user.get('permissions_v2', {}).get(dataset, [])
