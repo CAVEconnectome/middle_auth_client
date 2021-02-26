@@ -210,14 +210,14 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
 
-            nonlocal dataset
-
             table_id = kwargs.get('table_id')
 
             if table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
 
-            if dataset is None:
+            local_dataset = dataset
+
+            if local_dataset is None:
                 table_id_to_dataset = {
                     "pinky100_sv16": "pinky100",
                     "pinky100_neo1": "pinky100",
@@ -231,28 +231,28 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                 }
 
                 if table_id in table_id_to_dataset:
-                    dataset = table_id_to_dataset.get(table_id)
+                    local_dataset = table_id_to_dataset.get(table_id)
                 elif table_id.startswith("pinky100_rv") or \
                         table_id.startswith("pinky100_arv") or \
                         table_id.startswith("pinky_nf"):
-                    dataset = "pinky100"
+                    local_dataset = "pinky100"
                 elif table_id.startswith("minnie3_v"):
-                    dataset = "minnie65"
+                    local_dataset = "minnie65"
                 else:
                     return flask.Response("Unknown dataset", 400)
 
-            if dataset is not None:
-                has_permission = required_permission in flask.g.auth_user.get('permissions_v2', {}).get(dataset, [])
+            if local_dataset is not None:
+                has_permission = required_permission in flask.g.auth_user.get('permissions_v2', {}).get(local_dataset, [])
 
                 if not 'permissions_v2' in flask.g.auth_user: # backwards compatability
                     required_level = ['none', 'view', 'edit'].index(required_permission)
-                    level_for_dataset = flask.g.auth_user.get('permissions', {}).get(dataset, 0)
+                    level_for_dataset = flask.g.auth_user.get('permissions', {}).get(local_dataset, 0)
                     has_permission = level_for_dataset >= required_level
 
                 if AUTH_DISABLED or has_permission or flask.g.public_access(): # public_access won't be true for edit requests
                     return f(*args, **kwargs)
                 else:
-                    resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, dataset), 403)
+                    resp = flask.Response("Missing permission: {0} for dataset {1}".format(required_permission, local_dataset), 403)
                     return resp
             else:
                 resp = flask.Response("Invalid table_id", 400)
