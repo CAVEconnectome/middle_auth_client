@@ -239,6 +239,8 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     local_dataset = "pinky100"
                 elif table_id.startswith("minnie3_v"):
                     local_dataset = "minnie65"
+                elif "fly" in table_id:
+                    local_dataset = "fafb"
                 else:
                     return flask.Response("Unknown dataset", 400)
 
