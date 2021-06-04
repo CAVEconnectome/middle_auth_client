@@ -226,6 +226,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     "minnie3_v0": "minnie65",
                     "anm0": "minnie65",
                     "fly_v26": "fafb_sandbox",
+                    "fly_training_v2": "fafb_sandbox",
                     "fly_v31": "fafb",
                     "fly_arv0": "fafb",
                     "pcgv2_fly_undo_redo": "fafb"
