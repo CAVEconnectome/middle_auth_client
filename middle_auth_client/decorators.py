@@ -225,11 +225,14 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     "anp0": "pinky100",
                     "minnie3_v0": "minnie65",
                     "anm0": "minnie65",
+                    "minnie35_p3_v1": "minnie65",
                     "fly_v26": "fafb_sandbox",
                     "fly_training_v2": "fafb_training",
                     "fly_v31": "fafb",
                     "fly_arv0": "fafb",
-                    "pcgv2_fly_undo_redo": "fafb"
+                    "pcgv2_fly_undo_redo": "fafb",
+                    "minnie65_public_v117": "microns_public",
+                    "minnie35_public_v0": "microns_public",
                 }
 
                 if table_id in table_id_to_dataset:
@@ -240,6 +243,8 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                     local_dataset = "pinky100"
                 elif table_id.startswith("minnie3_v"):
                     local_dataset = "minnie65"
+                elif table_id.startswith("rsc_"):
+                    local_dataset = "RSC"
                 elif "fly" in table_id:
                     local_dataset = "fafb"
                 else:
