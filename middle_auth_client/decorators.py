@@ -212,7 +212,7 @@ def auth_requires_admin(f):
 
     return decorated_function
 
-def auth_requires_permission(required_permission, public_table_key=None, public_node_key=None, service_token=None, dataset=None):
+def auth_requires_permission(required_permission, public_table_key=None, public_node_key=None, service_token=None, dataset=None, table_arg='table_id'):
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission, public_table_key=public_table_key, public_node_key=public_node_key, service_token=service_token)
@@ -220,7 +220,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
 
-            table_id = kwargs.get('table_id')
+            table_id = kwargs.get(table_arg)
 
             if table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
@@ -228,7 +228,7 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
             local_dataset = dataset
 
             if local_dataset is None:
-                service_namespace=flask.current_app.config['AUTH_SERVICE_NAMESPACE']
+                service_namespace=flask.current_app.config.get('AUTH_SERVICE_NAMESPACE', 'datastack')
                 service_token_local = service_token if service_token else flask.current_app.config.get('AUTH_TOKEN', "")
                 try:
                     local_dataset = dataset_from_table_id(service_namespace, table_id, service_token_local)
