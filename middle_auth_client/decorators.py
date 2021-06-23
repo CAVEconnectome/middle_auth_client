@@ -240,10 +240,14 @@ def auth_requires_admin(f):
     return decorated_function
 
 
-def auth_requires_permission(required_permission, public_table_key=None, public_node_key=None, service_token=None, dataset=None, table_arg='table_id'):
+def auth_requires_permission(required_permission, public_table_key=None,
+                             public_node_key=None, service_token=None,
+                             dataset=None, table_arg='table_id', resource_namespace=None):
     def decorator(f):
         @wraps(f)
-        @auth_required(required_permission=required_permission, public_table_key=public_table_key, public_node_key=public_node_key, service_token=service_token)
+        @auth_required(required_permission=required_permission,
+                       public_table_key=public_table_key,
+                       public_node_key=public_node_key, service_token=service_token)
         def decorated_function(*args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
@@ -254,15 +258,16 @@ def auth_requires_permission(required_permission, public_table_key=None, public_
                 return flask.Response("Missing table_id", 400)
 
             local_dataset = dataset
-
+            local_resource_namespace = resource_namespace
             if local_dataset is None:
-                service_namespace = flask.current_app.config.get(
-                    'AUTH_SERVICE_NAMESPACE', 'datastack')
+                if local_resource_namespace is None:
+                    local_resource_namespace = flask.current_app.config.get(
+                        'AUTH_SERVICE_NAMESPACE', 'datastack')
                 service_token_local = service_token if service_token else flask.current_app.config.get(
                     'AUTH_TOKEN', "")
                 try:
                     local_dataset = dataset_from_table_id(
-                        service_namespace, table_id, service_token_local)
+                        local_resource_namespace, table_id, service_token_local)
                 except RuntimeError:
                     resp = flask.Response("Invalid table_id for service", 400)
                     return resp
