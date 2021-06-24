@@ -117,6 +117,21 @@ def dataset_from_table_id(service_namespace, table_id, token):
             f'failed to lookup dataset for service {service_namespace} & table_id: {table_id}: status code {req.status_code}. content: {req.content}')
 
 
+def user_has_permission(permission, table_id, resource_namespace, service_token=None):
+    token = (
+        service_token
+        if service_token
+        else flask.current_app.config.get("AUTH_TOKEN", "")
+    )
+
+    dataset = dataset_from_table_id(resource_namespace, table_id, token)
+
+    has_permission = permission in flask.g.auth_user.get("permissions_v2", {}).get(
+        dataset, []
+    )
+    return has_permission
+
+
 def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
     def decorator(f):
         @wraps(f)
