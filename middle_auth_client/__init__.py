@@ -1,3 +1,3 @@
-__version__ = '3.4.1'
+__version__ = '3.5.0'
 from middle_auth_client.decorators import auth_required, auth_requires_admin, auth_requires_permission, get_usernames, user_has_permission
 
