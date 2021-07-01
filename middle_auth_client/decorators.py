@@ -3,9 +3,13 @@ import flask
 import json
 import os
 from urllib.parse import quote
+
 from furl import furl
 import cachetools.func
+from cachetools import cached, TTLCache
 import requests
+
+from .ratelimit import RateLimitError, rate_limit
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
@@ -16,6 +20,9 @@ USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
 TOKEN_NAME = os.environ.get('TOKEN_NAME', "middle_auth_token")
 CACHE_MAXSIZE = int(os.environ.get('TOKEN_CACHE_MAXSIZE', "1024"))
 CACHE_TTL = int(os.environ.get('TOKEN_CACHE_TTL', "300"))
+
+SKIP_CACHE_LIMIT = int(os.environ.get('TOKEN_CACHE_SKIP_LIMIT', "20"))
+SKIP_CACHE_WINDOW_SEC = int(os.environ.get('TOKEN_CACHE_SKIP_WINDOW_SEC', "300"))
 
 AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
 
@@ -29,7 +36,6 @@ if USE_REDIS:
 
 class AuthorizationError(Exception):
     pass
-
 
 def get_usernames(user_ids, token=None):
     if AUTH_DISABLED:
@@ -53,14 +59,18 @@ def get_usernames(user_ids, token=None):
     else:
         return []
 
+user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
-@cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+@cached(cache=user_cache)
 def user_cache_http(token):
     user_request = requests.get(
         f"https://{AUTH_URL}/api/v1/user/cache", headers={'authorization': 'Bearer ' + token})
     if user_request.status_code == 200:
         return user_request.json()
 
+@rate_limit(limit_args=[0], limit=SKIP_CACHE_LIMIT, window_sec=SKIP_CACHE_WINDOW_SEC)
+def clear_user_cache_maybe(token):
+    user_cache.pop((token,), None)
 
 def get_user_cache(token):
     if USE_REDIS:
@@ -148,7 +158,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
 
             def lazy_check_public_access():
                 if flask.g.public_access_cache is None:
-                    if service_token and required_permission is not 'edit':
+                    if service_token and required_permission != 'edit':
                         if public_node_key is not None:
                             flask.g.public_access_cache = is_root_public(kwargs.get(
                                 public_table_key), kwargs.get(public_node_key), service_token)
@@ -254,7 +264,6 @@ def auth_requires_admin(f):
 
     return decorated_function
 
-
 def auth_requires_permission(required_permission, public_table_key=None,
                              public_node_key=None, service_token=None,
                              dataset=None, table_arg='table_id', resource_namespace=None):
@@ -287,20 +296,44 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     resp = flask.Response("Invalid table_id for service", 400)
                     return resp
 
-            has_permission = required_permission in flask.g.auth_user.get(
-                'permissions_v2', {}).get(local_dataset, [])
+            def has_permission(auth_user):
+                res = required_permission in auth_user.get(
+                    'permissions_v2', {}).get(local_dataset, [])
 
-            if not 'permissions_v2' in flask.g.auth_user:  # backwards compatability
-                required_level = ['none', 'view', 'edit'].index(
-                    required_permission)
-                level_for_dataset = flask.g.auth_user.get(
-                    'permissions', {}).get(local_dataset, 0)
-                has_permission = level_for_dataset >= required_level
+                if not 'permissions_v2' in auth_user:  # backwards compatability
+                    required_level = ['none', 'view', 'edit'].index(
+                        required_permission)
+                    level_for_dataset = auth_user.get(
+                        'permissions', {}).get(local_dataset, 0)
+                    res = level_for_dataset >= required_level
+
+                return res
 
             # public_access won't be true for edit requests
-            if AUTH_DISABLED or has_permission or flask.g.public_access():
+            if AUTH_DISABLED or has_permission(flask.g.auth_user) or flask.g.public_access():
                 return f(*args, **kwargs)
             else:
+                if flask.g.auth_token: # should always exist
+                    try:
+                        clear_user_cache_maybe(flask.g.auth_token)
+                        # try again
+                        cached_user_data = get_user_cache(flask.g.auth_token)
+                        if cached_user_data:
+                            flask.g.auth_user = cached_user_data
+                            if has_permission(flask.g.auth_user):
+                                return f(*args, **kwargs) # cached permissions were out of date
+                    except RateLimitError:
+                        pass
+
+                missing_tos = flask.g.auth_user.get('missing_tos', [])
+                relevant_tos = [tos for tos in missing_tos if tos['name'] == local_dataset]
+
+                if len(relevant_tos):
+                    return flask.jsonify({
+                        "error": "missing_tos",
+                        "tos": missing_tos[0]
+                    }), 403
+
                 resp = flask.Response("Missing permission: {0} for dataset {1}".format(
                     required_permission, local_dataset), 403)
                 return resp
@@ -318,6 +351,7 @@ def auth_requires_group(required_group):
                 return f(*args, **kwargs)
 
             if not AUTH_DISABLED and required_group not in flask.g.auth_user['groups']:
+                clear_user_cache_maybe(flask.g.auth_token)
                 resp = flask.Response(
                     "Requires membership of group: {0}".format(required_group), 403)
                 return resp
