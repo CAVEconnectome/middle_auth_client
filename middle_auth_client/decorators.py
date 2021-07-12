@@ -331,7 +331,8 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 if len(relevant_tos):
                     return flask.jsonify({
                         "error": "missing_tos",
-                        "tos": relevant_tos[0]
+                        "tos": relevant_tos[0],
+                        "tos_link": f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]}/accept"
                     }), 403
 
                 resp = flask.Response("Missing permission: {0} for dataset {1}".format(
