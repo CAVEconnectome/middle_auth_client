@@ -264,6 +264,17 @@ def auth_requires_admin(f):
 
     return decorated_function
 
+def make_api_error(http_status, api_code, msg=None, data=None):
+    res = {"error": api_code}
+
+    if msg is not None:
+        res["msg"] = msg
+
+    if data is not None:
+        res["data"] = data
+
+    return flask.jsonify(res), 403
+
 def auth_requires_permission(required_permission, public_table_key=None,
                              public_node_key=None, service_token=None,
                              dataset=None, table_arg='table_id', resource_namespace=None):
@@ -326,14 +337,15 @@ def auth_requires_permission(required_permission, public_table_key=None,
                         pass
 
                 missing_tos = flask.g.auth_user.get('missing_tos', [])
-                relevant_tos = [tos for tos in missing_tos if tos['name'] == local_dataset]
+                relevant_tos = [tos for tos in missing_tos if tos['dataset_name'] == local_dataset]
 
                 if len(relevant_tos):
-                    return flask.jsonify({
-                        "error": "missing_tos",
-                        "tos": relevant_tos[0],
-                        "tos_link": f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]}/accept"
-                    }), 403
+                    return make_api_error(403, "missing_tos",
+                        msg="Need to accept Terms of Service to access resource.", data={
+                        "tos_id": relevant_tos[0]['tos_id'],
+                        "tos_name": relevant_tos[0]['tos_name'],
+                        "tos_link": f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept",
+                    })
 
                 resp = flask.Response("Missing permission: {0} for dataset {1}".format(
                     required_permission, local_dataset), 403)
