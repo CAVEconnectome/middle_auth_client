@@ -141,6 +141,12 @@ def user_has_permission(permission, table_id, resource_namespace, service_token=
     )
     return has_permission
 
+def is_programmatic_access():
+    auth_header = flask.request.headers.get('authorization')
+    xrw_header = flask.request.headers.get('X-Requested-With')
+
+    return xrw_header or auth_header or flask.request.environ.get(
+        'HTTP_ORIGIN')
 
 def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
     def decorator(f):
@@ -184,10 +190,8 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
             token = flask.request.cookies.get(cookie_name)
 
             auth_header = flask.request.headers.get('authorization')
-            xrw_header = flask.request.headers.get('X-Requested-With')
 
-            programmatic_access = xrw_header or auth_header or flask.request.environ.get(
-                'HTTP_ORIGIN')
+            programmatic_access = is_programmatic_access()
 
             AUTHORIZE_URI = 'https://' + STICKY_AUTH_URL + '/api/v1/authorize'
 
@@ -340,12 +344,17 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 relevant_tos = [tos for tos in missing_tos if tos['dataset_name'] == local_dataset]
 
                 if len(relevant_tos):
-                    return make_api_error(403, "missing_tos",
-                        msg="Need to accept Terms of Service to access resource.", data={
-                        "tos_id": relevant_tos[0]['tos_id'],
-                        "tos_name": relevant_tos[0]['tos_name'],
-                        "tos_link": f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept",
-                    })
+                    tos_link = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
+
+                    if is_programmatic_access():
+                        return make_api_error(403, "missing_tos",
+                            msg="Need to accept Terms of Service to access resource.", data={
+                            "tos_id": relevant_tos[0]['tos_id'],
+                            "tos_name": relevant_tos[0]['tos_name'],
+                            "tos_link": tos_link,
+                        })
+                    else:
+                        return flask.redirect(tos_link + '?redirect=' + quote(flask.request.url), code=302)
 
                 resp = flask.Response("Missing permission: {0} for dataset {1}".format(
                     required_permission, local_dataset), 403)
