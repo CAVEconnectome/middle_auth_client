@@ -344,17 +344,17 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 relevant_tos = [tos for tos in missing_tos if tos['dataset_name'] == local_dataset]
 
                 if len(relevant_tos):
-                    tos_link = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
+                    tos_form_url = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
 
                     if is_programmatic_access():
                         return make_api_error(403, "missing_tos",
                             msg="Need to accept Terms of Service to access resource.", data={
                             "tos_id": relevant_tos[0]['tos_id'],
                             "tos_name": relevant_tos[0]['tos_name'],
-                            "tos_link": tos_link,
+                            "tos_form_url": tos_form_url,
                         })
                     else:
-                        return flask.redirect(tos_link + '?redirect=' + quote(flask.request.url), code=302)
+                        return flask.redirect(tos_form_url + '?redirect=' + quote(flask.request.url), code=302)
 
                 resp = flask.Response("Missing permission: {0} for dataset {1}".format(
                     required_permission, local_dataset), 403)
