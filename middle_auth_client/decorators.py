@@ -22,7 +22,8 @@ CACHE_MAXSIZE = int(os.environ.get('TOKEN_CACHE_MAXSIZE', "1024"))
 CACHE_TTL = int(os.environ.get('TOKEN_CACHE_TTL', "300"))
 
 SKIP_CACHE_LIMIT = int(os.environ.get('TOKEN_CACHE_SKIP_LIMIT', "20"))
-SKIP_CACHE_WINDOW_SEC = int(os.environ.get('TOKEN_CACHE_SKIP_WINDOW_SEC', "300"))
+SKIP_CACHE_WINDOW_SEC = int(os.environ.get(
+    'TOKEN_CACHE_SKIP_WINDOW_SEC', "300"))
 
 AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
 
@@ -36,6 +37,7 @@ if USE_REDIS:
 
 class AuthorizationError(Exception):
     pass
+
 
 def get_usernames(user_ids, token=None):
     if AUTH_DISABLED:
@@ -59,7 +61,9 @@ def get_usernames(user_ids, token=None):
     else:
         return []
 
+
 user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+
 
 @cached(cache=user_cache)
 def user_cache_http(token):
@@ -68,9 +72,11 @@ def user_cache_http(token):
     if user_request.status_code == 200:
         return user_request.json()
 
+
 @rate_limit(limit_args=[0], limit=SKIP_CACHE_LIMIT, window_sec=SKIP_CACHE_WINDOW_SEC)
 def clear_user_cache_maybe(token):
     user_cache.pop((token,), None)
+
 
 def get_user_cache(token):
     if USE_REDIS:
@@ -141,12 +147,14 @@ def user_has_permission(permission, table_id, resource_namespace, service_token=
     )
     return has_permission
 
+
 def is_programmatic_access():
     auth_header = flask.request.headers.get('authorization')
     xrw_header = flask.request.headers.get('X-Requested-With')
 
     return xrw_header or auth_header or flask.request.environ.get(
         'HTTP_ORIGIN')
+
 
 def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
     def decorator(f):
@@ -268,6 +276,7 @@ def auth_requires_admin(f):
 
     return decorated_function
 
+
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
 
@@ -279,9 +288,10 @@ def make_api_error(http_status, api_code, msg=None, data=None):
 
     return flask.jsonify(res), 403
 
+
 def auth_requires_permission(required_permission, public_table_key=None,
                              public_node_key=None, service_token=None,
-                             dataset=None, table_arg='table_id', resource_namespace=None):
+                             dataset=None, table_arg='table_id', table_id=None, resource_namespace=None):
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission,
@@ -291,7 +301,9 @@ def auth_requires_permission(required_permission, public_table_key=None,
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
 
-            table_id = kwargs.get(table_arg)
+            local_table_id = table_id
+            if local_table_id is None:
+                local_table_id = kwargs.get(table_arg)
 
             if table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
@@ -328,7 +340,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
             if AUTH_DISABLED or has_permission(flask.g.auth_user) or flask.g.public_access():
                 return f(*args, **kwargs)
             else:
-                if flask.g.auth_token: # should always exist
+                if flask.g.auth_token:  # should always exist
                     try:
                         clear_user_cache_maybe(flask.g.auth_token)
                         # try again
@@ -336,23 +348,25 @@ def auth_requires_permission(required_permission, public_table_key=None,
                         if cached_user_data:
                             flask.g.auth_user = cached_user_data
                             if has_permission(flask.g.auth_user):
-                                return f(*args, **kwargs) # cached permissions were out of date
+                                # cached permissions were out of date
+                                return f(*args, **kwargs)
                     except RateLimitError:
                         pass
 
                 missing_tos = flask.g.auth_user.get('missing_tos', [])
-                relevant_tos = [tos for tos in missing_tos if tos['dataset_name'] == local_dataset]
+                relevant_tos = [
+                    tos for tos in missing_tos if tos['dataset_name'] == local_dataset]
 
                 if len(relevant_tos):
                     tos_form_url = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
 
                     if is_programmatic_access():
                         return make_api_error(403, "missing_tos",
-                            msg="Need to accept Terms of Service to access resource.", data={
-                            "tos_id": relevant_tos[0]['tos_id'],
-                            "tos_name": relevant_tos[0]['tos_name'],
-                            "tos_form_url": tos_form_url,
-                        })
+                                              msg="Need to accept Terms of Service to access resource.", data={
+                                                  "tos_id": relevant_tos[0]['tos_id'],
+                                                  "tos_name": relevant_tos[0]['tos_name'],
+                                                  "tos_form_url": tos_form_url,
+                                              })
                     else:
                         return flask.redirect(tos_form_url + '?redirect=' + quote(flask.request.url), code=302)
 
