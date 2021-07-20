@@ -305,7 +305,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
             if local_table_id is None:
                 local_table_id = kwargs.get(table_arg)
 
-            if table_id is None and dataset is None:
+            if local_table_id is None and dataset is None:
                 return flask.Response("Missing table_id", 400)
 
             local_dataset = dataset
@@ -318,7 +318,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     'AUTH_TOKEN', "")
                 try:
                     local_dataset = dataset_from_table_id(
-                        local_resource_namespace, table_id, service_token_local)
+                        local_resource_namespace, local_table_id, service_token_local)
                 except RuntimeError:
                     resp = flask.Response("Invalid table_id for service", 400)
                     return resp
