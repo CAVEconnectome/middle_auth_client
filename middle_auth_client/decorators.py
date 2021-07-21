@@ -61,7 +61,6 @@ def get_usernames(user_ids, token=None):
     else:
         return []
 
-
 user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
 @cached(cache=user_cache)
