@@ -8,7 +8,7 @@ from furl import furl
 import cachetools.func
 from cachetools import cached, TTLCache
 import requests
-from werkzeug.exceptions import Forbidden, Unauthorized
+from werkzeug.exceptions import Forbidden, Unauthorized, BadRequest
 
 from .ratelimit import RateLimitError, rate_limit
 
@@ -281,18 +281,27 @@ def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
 
     if msg is not None:
-        res["msg"] = msg
+        res["message"] = msg
 
     if data is not None:
         res["data"] = data
-    if http_status == 403:
-        e = Forbidden(msg)
-        e.data = res
-        raise e
-    elif http_status == 401:
-        e = Unauthorized(msg)
-        e.data = res
-        raise e
+    
+    raise_exception = flask.current_app.config.get('AUTH_RAISE_WZ_EXCEPTION', False)
+    if raise_exception:
+        if http_status == 403:
+            e = Forbidden(msg)
+            e.data = res
+            raise e
+        elif http_status == 401:
+            e = Unauthorized(msg)
+            e.data = res
+            raise e
+        elif http_status == 400:
+            e = BadRequest(msg)
+            e.data = res
+            raise e
+        else:
+            return flask.jsonify(res), http_status
     else:
         return flask.jsonify(res), http_status
 
