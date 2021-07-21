@@ -323,7 +323,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 local_table_id = kwargs.get(table_arg)
 
             if local_table_id is None and dataset is None:
-                return flask.Response("Missing table_id", 400)
+                return make_api_error(400, "missing_table_id", msg="Missing table_id")
 
             local_dataset = dataset
             local_resource_namespace = resource_namespace
@@ -337,7 +337,10 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     local_dataset = dataset_from_table_id(
                         local_resource_namespace, local_table_id, service_token_local)
                 except RuntimeError:
-                    resp = flask.Response("Invalid table_id for service", 400)
+                    resp = make_api_error(400, 
+                                         "invalid_table_id",
+                                         msg="Invalid table_id for service",
+                                         data={'table_id':local_table_id, 'resource_namespace': local_resource_namespace})
                     return resp
 
             def has_permission(auth_user):
@@ -378,19 +381,20 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     tos_form_url = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
 
                     if is_programmatic_access():
-                        return make_api_error(403, "missing_tos",
+                        resp= make_api_error(403, "missing_tos",
                                               msg="Need to accept Terms of Service to access resource.", data={
                                                   "tos_id": relevant_tos[0]['tos_id'],
                                                   "tos_name": relevant_tos[0]['tos_name'],
                                                   "tos_form_url": tos_form_url,
                                               })
+                        return resp
                     else:
                         return flask.redirect(tos_form_url + '?redirect=' + quote(flask.request.url), code=302)
-
-                resp = flask.Response("Missing permission: {0} for dataset {1}".format(
-                    required_permission, local_dataset), 403)
+                message = "Missing permission: {0} for dataset {1}".format(
+                    required_permission, local_dataset)
+                resp = make_api_error(403, "missing_permission", message, data={'required_permission':required_permission,
+                                                                                'auth_dataset': local_dataset})
                 return resp
-
         return decorated_function
     return decorator
 
