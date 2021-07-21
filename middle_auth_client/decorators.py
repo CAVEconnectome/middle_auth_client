@@ -281,12 +281,14 @@ def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
 
     if msg is not None:
-        res["msg"] = msg
+        res["message"] = msg
 
     if data is not None:
         res["data"] = data
 
-    return flask.jsonify(res), 403
+    response = flask.jsonify(res)
+    response.status_code = http_status
+    return response
 
 
 def auth_requires_permission(required_permission, public_table_key=None,
