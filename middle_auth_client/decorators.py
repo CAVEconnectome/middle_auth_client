@@ -210,7 +210,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
 
             if auth_header:
                 if not auth_header.startswith('Bearer '):
-                    resp = make_api_error(400, "bad_token", "Header must begin with \'Bearer\'")
+                    resp = make_api_error(400, "bad_auth_header", "Header must begin with \'Bearer\'")
                     resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + \
                         '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
                     return resp
