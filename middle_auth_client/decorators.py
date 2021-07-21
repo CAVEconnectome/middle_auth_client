@@ -64,7 +64,6 @@ def get_usernames(user_ids, token=None):
 
 user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
-
 @cached(cache=user_cache)
 def user_cache_http(token):
     user_request = requests.get(
