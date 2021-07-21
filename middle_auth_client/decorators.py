@@ -286,25 +286,8 @@ def make_api_error(http_status, api_code, msg=None, data=None):
     if data is not None:
         res["data"] = data
     
-    raise_exception = flask.current_app.config.get('AUTH_RAISE_WZ_EXCEPTION', False)
-    if raise_exception:
-        if http_status == 403:
-            e = Forbidden(msg)
-            e.data = res
-            raise e
-        elif http_status == 401:
-            e = Unauthorized(msg)
-            e.data = res
-            raise e
-        elif http_status == 400:
-            e = BadRequest(msg)
-            e.data = res
-            raise e
-        else:
-            return flask.jsonify(res), http_status
-    else:
-        return flask.jsonify(res), http_status
-
+    flask.abort(http_status, description=res)
+    
 
 def auth_requires_permission(required_permission, public_table_key=None,
                              public_node_key=None, service_token=None,
