@@ -311,7 +311,8 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 return make_api_error(400,
                                       "missing_table_id",
                                       msg = "Missing table_id",
-                                      data = {'table_id': table_id})
+                                      data = {'table_id': local_table_id,
+                                              'auth_dataset': dataset})
 
             local_dataset = dataset
             local_resource_namespace = resource_namespace
@@ -328,7 +329,8 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     return make_api_error(400,
                         "invalid_table_id",
                         msg = "Invalid table_id for service",
-                        data = {'table_id': table_id,
+                        data = {'table_id': local_table_id,
+                                'resource_namespace': local_resource_namespace,
                                 'auth_dataset':local_dataset})
 
             def has_permission(auth_user):
