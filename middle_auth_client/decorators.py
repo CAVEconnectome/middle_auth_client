@@ -212,7 +212,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
 
             if auth_header:
                 if not auth_header.startswith('Bearer '):
-                    resp = flask.Response("Invalid Request", 400)
+                    resp = make_api_error(400, "bad_token", "Header must begin with \'Bearer\'")
                     resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + \
                         '", error="invalid_request", error_description="Header must begin with \'Bearer\'"'
                     return resp
@@ -221,7 +221,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
 
             if programmatic_access:
                 if not token and not flask.g.public_access():
-                    resp = flask.Response("Unauthorized", 401)
+                    resp = make_api_error(401, "no_token", "Unauthorized - No Token Provided")
                     resp.headers['WWW-Authenticate'] = 'Bearer realm="' + \
                         AUTHORIZE_URI + '"'
                     return resp
@@ -243,7 +243,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
             elif not programmatic_access and not flask.g.public_access():
                 return flask.redirect(AUTHORIZE_URI + '?redirect=' + quote(flask.request.url), code=302)
             elif not flask.g.public_access():
-                resp = flask.Response("Invalid/Expired Token", 401)
+                resp = make_api_error(401, "invalid_token", "Unauthorized - Token is Invalid or Expired")
                 resp.headers['WWW-Authenticate'] = 'Bearer realm="' + AUTHORIZE_URI + \
                     '", error="invalid_token", error_description="Invalid/Expired Token"'
                 return resp
