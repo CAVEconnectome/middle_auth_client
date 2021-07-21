@@ -308,7 +308,10 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 local_table_id = kwargs.get(table_arg)
 
             if local_table_id is None and dataset is None:
-                return flask.Response("Missing table_id", 400)
+                return make_api_error(400,
+                                      "missing_table_id",
+                                      msg = "Missing table_id",
+                                      data = {'table_id': table_id})
 
             local_dataset = dataset
             local_resource_namespace = resource_namespace
@@ -322,8 +325,11 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     local_dataset = dataset_from_table_id(
                         local_resource_namespace, local_table_id, service_token_local)
                 except RuntimeError:
-                    resp = flask.Response("Invalid table_id for service", 400)
-                    return resp
+                    return make_api_error(400,
+                        "invalid_table_id",
+                        msg = "Invalid table_id for service",
+                        data = {'table_id': table_id,
+                                'auth_dataset':local_dataset})
 
             def has_permission(auth_user):
                 res = required_permission in auth_user.get(
@@ -371,9 +377,14 @@ def auth_requires_permission(required_permission, public_table_key=None,
                                               })
                     else:
                         return flask.redirect(tos_form_url + '?redirect=' + quote(flask.request.url), code=302)
-
-                resp = flask.Response("Missing permission: {0} for dataset {1}".format(
-                    required_permission, local_dataset), 403)
+                message = "Missing permission: {0} for dataset {1}".format(
+                    required_permission, local_dataset)
+                resp = make_api_error(403,
+                                      "missing_permission",
+                                      msg = message,
+                                      data = {'required_permission': required_permission,
+                                      'auth_dataset': local_dataset})
+                
                 return resp
 
         return decorated_function
