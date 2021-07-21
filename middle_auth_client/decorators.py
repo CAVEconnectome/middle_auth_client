@@ -310,9 +310,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
             if local_table_id is None and dataset is None:
                 return make_api_error(400,
                                       "missing_table_id",
-                                      msg = "Missing table_id",
-                                      data = {'table_id': local_table_id,
-                                              'auth_dataset': dataset})
+                                      msg = "Missing table_id")
 
             local_dataset = dataset
             local_resource_namespace = resource_namespace
