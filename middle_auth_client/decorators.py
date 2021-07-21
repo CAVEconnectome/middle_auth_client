@@ -8,6 +8,7 @@ from furl import furl
 import cachetools.func
 from cachetools import cached, TTLCache
 import requests
+from werkzeug.exceptions import Forbidden, Unauthorized
 
 from .ratelimit import RateLimitError, rate_limit
 
@@ -276,7 +277,6 @@ def auth_requires_admin(f):
 
     return decorated_function
 
-
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
 
@@ -285,8 +285,16 @@ def make_api_error(http_status, api_code, msg=None, data=None):
 
     if data is not None:
         res["data"] = data
-
-    return flask.jsonify(res), 403
+    if http_status == 403:
+        e = Forbidden(msg)
+        e.data = res
+        raise e
+    elif http_status == 401:
+        e = Unauthorized(msg)
+        e.data = res
+        raise e
+    else:
+        return flask.jsonify(res), http_status
 
 
 def auth_requires_permission(required_permission, public_table_key=None,
