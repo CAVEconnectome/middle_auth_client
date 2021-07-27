@@ -16,7 +16,6 @@ AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
 STICKY_AUTH_URL = os.environ.get('STICKY_AUTH_URL', AUTH_URL)
 
-USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
 TOKEN_NAME = os.environ.get('TOKEN_NAME', "middle_auth_token")
 CACHE_MAXSIZE = int(os.environ.get('TOKEN_CACHE_MAXSIZE', "1024"))
 CACHE_TTL = int(os.environ.get('TOKEN_CACHE_TTL', "300"))
@@ -37,18 +36,13 @@ retries = Retry(total=5,
 session = requests.Session()
 session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
 
-
-r = None
-if USE_REDIS:
-    import redis
-    r = redis.Redis(
-        host=os.environ.get('REDISHOST', 'localhost'),
-        port=int(os.environ.get('REDISPORT', 6379)))
-
+_permission_lookup_override = None
+def setPermissionLookupOverride(func):
+    global _permission_lookup_override
+    _permission_lookup_override = func
 
 class AuthorizationError(Exception):
     pass
-
 
 def get_usernames(user_ids, token=None):
     if AUTH_DISABLED:
@@ -101,12 +95,8 @@ def clear_user_cache_maybe(token):
 
 
 def get_user_cache(token):
-    if USE_REDIS:
-        cached_user_data = r.get("token_" + token)
-        if cached_user_data:
-            return json.loads(cached_user_data.decode('utf-8'))
-    else:
-        return user_cache_http(token)
+    lookup_function = _permission_lookup_override if _permission_lookup_override else user_cache_http
+    return lookup_function(token)
 
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
