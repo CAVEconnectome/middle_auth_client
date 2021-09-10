@@ -34,7 +34,7 @@ retries = Retry(total=5,
                 status_forcelist=[ 500, 502, 503, 504 ])
 
 session = requests.Session()
-session.mount('https://' + AUTH_URL, HTTPAdapter(max_retries=retries))
+session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
 session.mount('https://' + INFO_URL, HTTPAdapter(max_retries=retries))
 
 
