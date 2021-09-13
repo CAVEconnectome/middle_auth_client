@@ -8,7 +8,8 @@ from furl import furl
 import cachetools.func
 from cachetools import cached, TTLCache
 import requests
-
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 from .ratelimit import RateLimitError, rate_limit
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
@@ -26,6 +27,16 @@ SKIP_CACHE_WINDOW_SEC = int(os.environ.get(
     'TOKEN_CACHE_SKIP_WINDOW_SEC', "300"))
 
 AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
+
+
+retries = Retry(total=5,
+                backoff_factor=0.1,
+                status_forcelist=[ 500, 502, 503, 504 ])
+
+session = requests.Session()
+session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
+session.mount('https://' + INFO_URL, HTTPAdapter(max_retries=retries))
+
 
 r = None
 if USE_REDIS:
@@ -46,7 +57,7 @@ def get_usernames(user_ids, token=None):
     if token is None:
         raise ValueError('missing token')
     if len(user_ids):
-        users_request = requests.get(f"https://{AUTH_URL}/api/v1/username?id={','.join(map(str, user_ids))}",
+        users_request = session.get(f"https://{AUTH_URL}/api/v1/username?id={','.join(map(str, user_ids))}",
                                      headers={
                                          'authorization': 'Bearer ' + token},
                                      timeout=5)
@@ -65,7 +76,7 @@ user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
 @cached(cache=user_cache)
 def user_cache_http(token):
-    user_request = requests.get(
+    user_request = session.get(
         f"https://{AUTH_URL}/api/v1/user/cache", headers={'authorization': 'Bearer ' + token})
     if user_request.status_code == 200:
         return user_request.json()
@@ -95,7 +106,7 @@ def is_root_public(table_id, root_id, token):
 
     url = f"https://{AUTH_URL}/api/v1/table/{table_id}/root/{root_id}/is_public"
 
-    req = requests.get(
+    req = session.get(
         url, headers={'authorization': 'Bearer ' + token}, timeout=5)
 
     if req.status_code == 200:
@@ -111,7 +122,7 @@ def table_has_public(table_id, token):
 
     url = f"https://{AUTH_URL}/api/v1/table/{table_id}/has_public"
 
-    req = requests.get(
+    req = session.get(
         url, headers={'authorization': 'Bearer ' + token}, timeout=5)
     if req.status_code == 200:
         return req.json()
@@ -122,7 +133,7 @@ def table_has_public(table_id, token):
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def dataset_from_table_id(service_namespace, table_id, token):
     url = f"https://{INFO_URL}/api/v2/tablemapping/service/{service_namespace}/table/{table_id}/permission_group"
-    req = requests.get(
+    req = session.get(
         url, headers={'authorization': 'Bearer ' + token}, timeout=5)
     if req.status_code == 200:
         return req.json()
