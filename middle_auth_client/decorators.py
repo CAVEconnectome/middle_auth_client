@@ -143,6 +143,9 @@ def dataset_from_table_id(service_namespace, table_id, token):
 
 
 def user_has_permission(permission, table_id, resource_namespace, service_token=None):
+    if AUTH_DISABLED:
+        return True
+
     token = (
         service_token
         if service_token
