@@ -279,7 +279,8 @@ def auth_requires_admin(f):
     def decorated_function(*args, **kwargs):
         if flask.request.method == 'OPTIONS':
             return f(*args, **kwargs)
-
+        if AUTH_DISABLED:
+            return f(*args, **kwargs)
         if not flask.g.auth_user['admin']:
             resp = flask.Response("Requires superadmin privilege.", 403)
             return resp
@@ -314,7 +315,8 @@ def auth_requires_permission(required_permission, public_table_key=None,
         def decorated_function(*args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
-
+            if AUTH_DISABLED:
+                return f(*args, **kwargs)
             local_table_id = table_id
             if local_table_id is None:
                 local_table_id = kwargs.get(table_arg)
@@ -357,7 +359,7 @@ def auth_requires_permission(required_permission, public_table_key=None,
                 return res
 
             # public_access won't be true for edit requests
-            if AUTH_DISABLED or has_permission(flask.g.auth_user) or flask.g.public_access():
+            if has_permission(flask.g.auth_user) or flask.g.public_access():
                 return f(*args, **kwargs)
             else:
                 if flask.g.auth_token:  # should always exist
