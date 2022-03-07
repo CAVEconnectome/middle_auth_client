@@ -72,19 +72,32 @@ def get_usernames(user_ids, token=None):
     else:
         return []
 
-user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+token_to_user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
-@cached(cache=user_cache)
+user_id_to_user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+
+@cached(cache=token_to_user_cache)
 def user_cache_http(token):
     user_request = session.get(
         f"https://{AUTH_URL}/api/v1/user/cache", headers={'authorization': 'Bearer ' + token})
     if user_request.status_code == 200:
         return user_request.json()
 
+@cached(cache=user_id_to_user_cache)
+def user_id_to_user_cache_http(user_id, service_token=None):
+    token = (
+        service_token
+        if service_token
+        else flask.current_app.config.get("AUTH_TOKEN", "")
+    )
+    user_request = session.get(
+        f"https://{AUTH_URL}/api/v1/user/{user_id}/permissions", headers={'authorization': 'Bearer ' + token})
+    if user_request.status_code == 200:
+        return user_request.json()
 
 @rate_limit(limit_args=[0], limit=SKIP_CACHE_LIMIT, window_sec=SKIP_CACHE_WINDOW_SEC)
 def clear_user_cache_maybe(token):
-    user_cache.pop((token,), None)
+    token_to_user_cache.pop((token,), None)
 
 
 def get_user_cache(token):
@@ -288,6 +301,45 @@ def auth_requires_admin(f):
 
     return decorated_function
 
+# user_arg='user_id',
+# local_table_id = kwargs.get(table_arg)
+def auth_requires_common_group(user_id, excluded_groups=None, service_token=None):
+    excluded_groups = (
+        excluded_groups
+        if excluded_groups
+        else flask.current_app.config.get("AUTH_SHARED_EXCLUDED_GROUPS", [])
+    )
+
+    def decorator(f):
+        @wraps(f)
+        @auth_required
+        def decorated_function(*args, **kwargs):
+            if flask.request.method == 'OPTIONS':
+                return f(*args, **kwargs)
+
+            if not AUTH_DISABLED:
+                request_user_data = get_user_cache(flask.g.auth_token)
+                target_user_data = user_id_to_user_cache_http(user_id, service_token)
+
+                if request_user_data and target_user_data:
+                    request_user_groups = request_user_data['groups']
+                    target_user_groups = target_user_data['groups']
+
+                    shared_groups = [g for g in request_user_groups if g in target_user_groups]
+
+                    if len(shared_groups) == 0:
+                        clear_user_cache_maybe(flask.g.auth_token)
+                        resp = make_api_error(403, "requires_shared_group", msg="Requires shared group")
+                        return resp
+                else:
+                    resp = make_api_error(403, "network_error", msg="Failed to lookup permissions")
+                
+                return resp
+
+            return f(*args, **kwargs)
+
+        return decorated_function
+    return decorator
 
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
