@@ -301,45 +301,30 @@ def auth_requires_admin(f):
 
     return decorated_function
 
-# user_arg='user_id',
-# local_table_id = kwargs.get(table_arg)
-def auth_requires_common_group(user_id, excluded_groups=None, service_token=None):
+def users_share_common_group(user_id, excluded_groups=None, service_token=None):
     excluded_groups = (
         excluded_groups
         if excluded_groups
         else flask.current_app.config.get("AUTH_SHARED_EXCLUDED_GROUPS", [])
     )
 
-    def decorator(f):
-        @wraps(f)
-        @auth_required
-        def decorated_function(*args, **kwargs):
-            if flask.request.method == 'OPTIONS':
-                return f(*args, **kwargs)
+    if AUTH_DISABLED:
+        return True
 
-            if not AUTH_DISABLED:
-                request_user_data = get_user_cache(flask.g.auth_token)
-                target_user_data = user_id_to_user_cache_http(user_id, service_token)
+    target_user_data = user_id_to_user_cache_http(user_id, service_token)
 
-                if request_user_data and target_user_data:
-                    request_user_groups = request_user_data['groups']
-                    target_user_groups = target_user_data['groups']
+    if target_user_data:
+        request_user_groups = flask.g.auth_user['groups']
+        target_user_groups = target_user_data['groups']
 
-                    shared_groups = [g for g in request_user_groups if g in target_user_groups]
+        shared_groups = [g for g in request_user_groups if g in target_user_groups and g not in excluded_groups]
 
-                    if len(shared_groups) == 0:
-                        clear_user_cache_maybe(flask.g.auth_token)
-                        resp = make_api_error(403, "requires_shared_group", msg="Requires shared group")
-                        return resp
-                else:
-                    resp = make_api_error(403, "network_error", msg="Failed to lookup permissions")
-                
-                return resp
-
-            return f(*args, **kwargs)
-
-        return decorated_function
-    return decorator
+        if len(shared_groups) == 0:
+            return False
+        else:
+            return True
+    else:
+        raise RuntimeError('user_data lookup request failed')
 
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
