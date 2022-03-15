@@ -72,19 +72,32 @@ def get_usernames(user_ids, token=None):
     else:
         return []
 
-user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+token_to_user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
-@cached(cache=user_cache)
+user_id_to_user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+
+@cached(cache=token_to_user_cache)
 def user_cache_http(token):
     user_request = session.get(
         f"https://{AUTH_URL}/api/v1/user/cache", headers={'authorization': 'Bearer ' + token})
     if user_request.status_code == 200:
         return user_request.json()
 
+@cached(cache=user_id_to_user_cache)
+def user_id_to_user_cache_http(user_id, service_token=None):
+    token = (
+        service_token
+        if service_token
+        else flask.current_app.config.get("AUTH_TOKEN", "")
+    )
+    user_request = session.get(
+        f"https://{AUTH_URL}/api/v1/user/{user_id}/permissions", headers={'authorization': 'Bearer ' + token})
+    if user_request.status_code == 200:
+        return user_request.json()
 
 @rate_limit(limit_args=[0], limit=SKIP_CACHE_LIMIT, window_sec=SKIP_CACHE_WINDOW_SEC)
 def clear_user_cache_maybe(token):
-    user_cache.pop((token,), None)
+    token_to_user_cache.pop((token,), None)
 
 
 def get_user_cache(token):
@@ -288,6 +301,30 @@ def auth_requires_admin(f):
 
     return decorated_function
 
+def users_share_common_group(user_id, excluded_groups=None, service_token=None):
+    excluded_groups = (
+        excluded_groups
+        if excluded_groups
+        else flask.current_app.config.get("AUTH_SHARED_EXCLUDED_GROUPS", [])
+    )
+
+    if AUTH_DISABLED:
+        return True
+
+    target_user_data = user_id_to_user_cache_http(user_id, service_token)
+
+    if target_user_data:
+        request_user_groups = flask.g.auth_user['groups']
+        target_user_groups = target_user_data['groups']
+
+        shared_groups = [g for g in request_user_groups if g in target_user_groups and g not in excluded_groups]
+
+        if len(shared_groups) == 0:
+            return False
+        else:
+            return True
+    else:
+        raise RuntimeError('user_data lookup request failed')
 
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
