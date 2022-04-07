@@ -14,7 +14,6 @@ from .ratelimit import RateLimitError, rate_limit
 
 AUTH_URI = os.environ.get('AUTH_URI', 'localhost:5000/auth')
 AUTH_URL = os.environ.get('AUTH_URL', AUTH_URI)
-INFO_URL = os.environ.get('INFO_URL', 'localhost:5000/info')
 STICKY_AUTH_URL = os.environ.get('STICKY_AUTH_URL', AUTH_URL)
 
 USE_REDIS = os.environ.get('AUTH_USE_REDIS', "false") == "true"
@@ -35,7 +34,6 @@ retries = Retry(total=5,
 
 session = requests.Session()
 session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
-session.mount('https://' + INFO_URL, HTTPAdapter(max_retries=retries))
 
 
 r = None
@@ -145,7 +143,7 @@ def table_has_public(table_id, token):
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def dataset_from_table_id(service_namespace, table_id, token):
-    url = f"https://{INFO_URL}/api/v2/tablemapping/service/{service_namespace}/table/{table_id}/permission_group"
+    url = f"https://{AUTH_URL}/api/v1/service/{service_namespace}/table/{table_id}/dataset"
     req = session.get(
         url, headers={'authorization': 'Bearer ' + token}, timeout=5)
     if req.status_code == 200:
