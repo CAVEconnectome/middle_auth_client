@@ -366,10 +366,11 @@ def auth_requires_permission(required_permission, public_table_key=None,
                     local_resource_namespace = flask.current_app.config.get(
                         'AUTH_SERVICE_NAMESPACE', 'datastack')
                 service_token_local = service_token if service_token else flask.current_app.config.get(
-                    'AUTH_TOKEN', "")
+                    'AUTH_TOKEN')
                 try:
+                    table_mapping_token = service_token_local if service_token_local else flask.g.auth_token
                     local_dataset = dataset_from_table_id(
-                        local_resource_namespace, local_table_id, service_token_local)
+                        local_resource_namespace, local_table_id, table_mapping_token)
                 except RuntimeError:
                     return make_api_error(400,
                         "invalid_table_id",
