@@ -27,6 +27,8 @@ SKIP_CACHE_WINDOW_SEC = int(os.environ.get(
 
 AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
 
+MY_PERMISSION_URL = os.environ.get('MIDDLE_AUTH_MY_PERMISSION_URL', '/api/v1/user/cache')
+
 
 retries = Retry(total=5,
                 backoff_factor=0.1,
@@ -77,7 +79,7 @@ user_id_to_user_cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 @cached(cache=token_to_user_cache)
 def user_cache_http(token):
     user_request = session.get(
-        f"https://{AUTH_URL}/api/v1/user/cache", headers={'authorization': 'Bearer ' + token})
+        f"https://{AUTH_URL}{MY_PERMISSION_URL}", headers={'authorization': 'Bearer ' + token})
     if user_request.status_code == 200:
         return user_request.json()
 
