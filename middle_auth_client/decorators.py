@@ -36,6 +36,19 @@ retries = Retry(total=5,
 session = requests.Session()
 session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
 
+def make_api_error(http_status, api_code, msg=None, data=None):
+    res = {"error": api_code}
+
+    if msg is not None:
+        res["message"] = msg
+
+    if data is not None:
+        res["data"] = data
+
+    response = flask.jsonify(res)
+    response.status_code = http_status
+    return response
+
 _permission_lookup_override = None
 def setPermissionLookupOverride(func):
     global _permission_lookup_override
@@ -315,20 +328,6 @@ def users_share_common_group(user_id, excluded_groups=None, service_token=None):
             return True
     else:
         raise RuntimeError('user_data lookup request failed')
-
-def make_api_error(http_status, api_code, msg=None, data=None):
-    res = {"error": api_code}
-
-    if msg is not None:
-        res["message"] = msg
-
-    if data is not None:
-        res["data"] = data
-
-    response = flask.jsonify(res)
-    response.status_code = http_status
-    return response
-
 
 def auth_requires_permission(required_permission, public_table_key=None,
                              public_node_key=None, service_token=None,
