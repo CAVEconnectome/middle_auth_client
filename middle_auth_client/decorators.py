@@ -130,6 +130,23 @@ def is_root_public(table_id, root_id, token):
     else:
         raise RuntimeError('is_root_public request failed')
 
+@cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
+def are_roots_public(table_id, root_ids, token):
+    if type(root_ids) is not frozenset or len(root_ids) == 0:
+        return False
+
+    if AUTH_DISABLED:
+        return True
+
+    url = f"https://{AUTH_URL}/api/v1/table/{table_id}/root_all_public"
+    headers = {'Content-type': 'application/json', 'authorization': 'Bearer ' + token}
+    req = session.post(
+        url, headers=headers, data=json.dumps(list(root_ids)), timeout=5) # list(root_ids)
+
+    if req.status_code == 200:
+        return req.json()
+    else:
+        raise RuntimeError('is_root_public request failed')
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def table_has_public(table_id, token):
@@ -184,7 +201,7 @@ def is_programmatic_access():
         'HTTP_ORIGIN')
 
 
-def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, service_token=None):
+def auth_required(func=None, *, required_permission=None, public_table_key=None, public_node_key=None, public_node_json_key=None, service_token=None):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -202,8 +219,17 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                 if flask.g.public_access_cache is None:
                     if service_token and required_permission != 'edit':
                         if public_node_key is not None:
-                            flask.g.public_access_cache = is_root_public(kwargs.get(
-                                public_table_key), kwargs.get(public_node_key), service_token)
+                            flask.g.public_access_cache = is_root_public(
+                                kwargs.get(public_table_key),
+                                kwargs.get(public_node_key),
+                                service_token)
+                        elif public_node_json_key is not None:
+                            if flask.request.json and type(flask.request.json) is dict:
+                                node_ids = flask.request.json.get(public_node_json_key)
+                                flask.g.public_access_cache = are_roots_public(
+                                    kwargs.get(public_table_key),
+                                    frozenset(node_ids),
+                                    service_token)
                         elif public_table_key is not None:
                             flask.g.public_access_cache = table_has_public(
                                 kwargs.get(public_table_key), service_token)
@@ -330,13 +356,15 @@ def users_share_common_group(user_id, excluded_groups=None, service_token=None):
         raise RuntimeError('user_data lookup request failed')
 
 def auth_requires_permission(required_permission, public_table_key=None,
-                             public_node_key=None, service_token=None,
+                             public_node_key=None, public_node_json_key=None, service_token=None,
                              dataset=None, table_arg='table_id', table_id=None, resource_namespace=None):
     def decorator(f):
         @wraps(f)
         @auth_required(required_permission=required_permission,
                        public_table_key=public_table_key,
-                       public_node_key=public_node_key, service_token=service_token)
+                       public_node_key=public_node_key,
+                       public_node_json_key=public_node_json_key,
+                       service_token=service_token)
         def decorated_function(*args, **kwargs):
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
