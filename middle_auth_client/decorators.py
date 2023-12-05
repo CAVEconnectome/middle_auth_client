@@ -25,6 +25,7 @@ SKIP_CACHE_WINDOW_SEC = int(os.environ.get(
     'TOKEN_CACHE_SKIP_WINDOW_SEC', "300"))
 
 AUTH_DISABLED = os.environ.get('AUTH_DISABLED', "false") == "true"
+AUTH_DEBUG = os.environ.get('AUTH_DEBUG', "false") == "true"
 
 MY_PERMISSION_URL = os.environ.get('MIDDLE_AUTH_MY_PERMISSION_URL', '/api/v1/user/cache')
 
@@ -35,6 +36,10 @@ retries = Retry(total=5,
 
 session = requests.Session()
 session.mount('https://' + AUTH_URI, HTTPAdapter(max_retries=retries))
+
+def debug_print(str):
+    if AUTH_DEBUG:
+        print(str)
 
 def make_api_error(http_status, api_code, msg=None, data=None):
     res = {"error": api_code}
@@ -114,7 +119,9 @@ def get_user_cache(token):
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def is_root_public(table_id, root_id, token):
+    debug_print(f"is_root_public({table_id}, {root_id}, token_hidden)")
     if root_id is None:
+        debug_print(f"is_root_public: no root_id")
         return False
 
     if AUTH_DISABLED:
@@ -126,7 +133,9 @@ def is_root_public(table_id, root_id, token):
         url, headers={'authorization': 'Bearer ' + token}, timeout=5)
 
     if req.status_code == 200:
-        return req.json()
+        res = req.json()
+        debug_print(f"is_root_public: res - {res}")
+        return res
     else:
         raise RuntimeError('is_root_public request failed')
 
@@ -208,6 +217,8 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
             if flask.request.method == 'OPTIONS':
                 return f(*args, **kwargs)
 
+            debug_print(f"auth_required: required_permission:{required_permission} public_table_key:{public_table_key} public_node_key:{public_node_key} public_node_json_key:{public_node_json_key}")
+
             if hasattr(flask.g, 'auth_token'):
                 # if authorization header has already been parsed, don't need to re-parse
                 # this allows auth_required to be an optional decorator if auth_requires_role is also used
@@ -216,6 +227,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
             flask.g.public_access_cache = None
 
             def lazy_check_public_access():
+                debug_print(f"lazy_check_public_access {flask.g.public_access_cache}")
                 if flask.g.public_access_cache is None:
                     if service_token and required_permission != 'edit':
                         if public_node_key is not None:
@@ -224,7 +236,8 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                                 kwargs.get(public_node_key),
                                 service_token)
                         elif public_node_json_key is not None:
-                            if flask.request.get_json(silent=True) and type(flask.request.json) is dict:
+                            debug_print(f"content-type:{flask.request.content_type}")
+                            if flask.request.get_json(force=True, silent=True) and type(flask.request.json) is dict:
                                 node_ids = flask.request.json.get(public_node_json_key)
                                 flask.g.public_access_cache = are_roots_public(
                                     kwargs.get(public_table_key),
