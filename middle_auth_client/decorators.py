@@ -224,7 +224,7 @@ def auth_required(func=None, *, required_permission=None, public_table_key=None,
                                 kwargs.get(public_node_key),
                                 service_token)
                         elif public_node_json_key is not None:
-                            if flask.request.json and type(flask.request.json) is dict:
+                            if flask.request.get_json(silent=True) and type(flask.request.json) is dict:
                                 node_ids = flask.request.json.get(public_node_json_key)
                                 flask.g.public_access_cache = are_roots_public(
                                     kwargs.get(public_table_key),
