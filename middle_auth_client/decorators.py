@@ -29,6 +29,9 @@ AUTH_DEBUG = os.environ.get('AUTH_DEBUG', "false") == "true"
 
 MY_PERMISSION_URL = os.environ.get('MIDDLE_AUTH_MY_PERMISSION_URL', '/api/v1/user/cache')
 
+PERMISSIONS_KEY = "permissions_v2"
+PERMISSIONS_KEY_IGNORE_TOS = "permissions_v2_ignore_tos"
+
 
 retries = Retry(total=5,
                 backoff_factor=0.1,
@@ -184,7 +187,7 @@ def dataset_from_table_id(service_namespace, table_id, token):
             f'failed to lookup dataset for service {service_namespace} & table_id: {table_id}: status code {req.status_code}. content: {req.content}')
 
 
-def user_has_permission(permission, table_id, resource_namespace, service_token=None):
+def user_has_permission(permission, table_id, resource_namespace, service_token=None, ignore_tos=False):
     if AUTH_DISABLED:
         return True
 
@@ -196,7 +199,11 @@ def user_has_permission(permission, table_id, resource_namespace, service_token=
 
     dataset = dataset_from_table_id(resource_namespace, table_id, token)
 
-    has_permission = permission in flask.g.auth_user.get("permissions_v2", {}).get(
+    permissions_key = (
+        PERMISSIONS_KEY_IGNORE_TOS
+        if (ignore_tos and PERMISSIONS_KEY_IGNORE_TOS in flask.g.auth_user)
+        else PERMISSIONS_KEY)
+    has_permission = permission in flask.g.auth_user.get(permissions_key, {}).get(
         dataset, []
     )
     return has_permission
@@ -415,9 +422,9 @@ def auth_requires_permission(required_permission, public_table_key=None,
 
             def has_permission(auth_user):
                 res = required_permission in auth_user.get(
-                    'permissions_v2', {}).get(local_dataset, [])
+                    PERMISSIONS_KEY, {}).get(local_dataset, [])
 
-                if not 'permissions_v2' in auth_user:  # backwards compatability
+                if not PERMISSIONS_KEY in auth_user:  # backwards compatability
                     required_level = ['none', 'view', 'edit'].index(
                         required_permission)
                     level_for_dataset = auth_user.get(
