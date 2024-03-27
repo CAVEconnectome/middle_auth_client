@@ -206,6 +206,16 @@ def dataset_from_table_id(service_namespace, table_id, token):
         )
 
 
+def has_permission(auth_user, dataset, permission, ignore_tos=False):
+    permissions_key = (
+        PERMISSIONS_KEY_IGNORE_TOS
+        if (ignore_tos and PERMISSIONS_KEY_IGNORE_TOS in flask.g.auth_user)
+        else PERMISSIONS_KEY
+    )
+
+    return permission in auth_user.get(permissions_key, {}).get(dataset, [])
+
+
 def user_has_permission(
     permission, table_id, resource_namespace, service_token=None, ignore_tos=False
 ):
@@ -218,17 +228,9 @@ def user_has_permission(
         else flask.current_app.config.get("AUTH_TOKEN", "")
     )
 
-    dataset = dataset_from_table_id(resource_namespace, table_id, token)
+    dataset = dataset_from_table_id(resource_namespace, table_id, token, ignore_tos)
 
-    permissions_key = (
-        PERMISSIONS_KEY_IGNORE_TOS
-        if (ignore_tos and PERMISSIONS_KEY_IGNORE_TOS in flask.g.auth_user)
-        else PERMISSIONS_KEY
-    )
-    has_permission = permission in flask.g.auth_user.get(permissions_key, {}).get(
-        dataset, []
-    )
-    return has_permission
+    return has_permission(flask.g.auth_user, dataset, permission)
 
 
 def is_programmatic_access():
@@ -276,10 +278,9 @@ def auth_required(
                             )
                         elif public_node_json_key is not None:
                             debug_print(f"content-type:{flask.request.content_type}")
-                            if (
-                                flask.request.get_json(force=True, silent=True)
-                                and type(flask.request.json) is dict
-                            ):
+                            if flask.request.get_json(
+                                force=True, silent=True
+                            ) and isinstance(flask.request.json, dict):
                                 node_ids = flask.request.json.get(public_node_json_key)
                                 flask.g.public_access_cache = are_roots_public(
                                     kwargs.get(public_table_key),
@@ -465,6 +466,7 @@ def auth_requires_permission(
     table_arg="table_id",
     table_id=None,
     resource_namespace=None,
+    ignore_tos=False,
 ):
     def decorator(f):
         @wraps(f)
@@ -520,22 +522,13 @@ def auth_requires_permission(
                         },
                     )
 
-            def has_permission(auth_user):
-                res = required_permission in auth_user.get(PERMISSIONS_KEY, {}).get(
-                    local_dataset, []
-                )
-
-                if PERMISSIONS_KEY not in auth_user:  # backwards compatability
-                    required_level = ["none", "view", "edit"].index(required_permission)
-                    level_for_dataset = auth_user.get("permissions", {}).get(
-                        local_dataset, 0
-                    )
-                    res = level_for_dataset >= required_level
-
-                return res
-
             # public_access won't be true for edit requests
-            if has_permission(flask.g.auth_user) or flask.g.public_access():
+            if (
+                has_permission(
+                    flask.g.auth_user, local_dataset, required_permission, ignore_tos
+                )
+                or flask.g.public_access()
+            ):
                 return f(*args, **kwargs)
             else:
                 if flask.g.auth_token:  # should always exist
@@ -545,7 +538,12 @@ def auth_requires_permission(
                         cached_user_data = get_user_cache(flask.g.auth_token)
                         if cached_user_data:
                             flask.g.auth_user = cached_user_data
-                            if has_permission(flask.g.auth_user):
+                            if has_permission(
+                                flask.g.auth_user,
+                                local_dataset,
+                                required_permission,
+                                ignore_tos,
+                            ):
                                 # cached permissions were out of date
                                 return f(*args, **kwargs)
                     except RateLimitError:
@@ -556,7 +554,17 @@ def auth_requires_permission(
                     tos for tos in missing_tos if tos["dataset_name"] == local_dataset
                 ]
 
-                if len(relevant_tos):
+                # only show missing terms of service if they would be granted permission by accepting it
+                if len(relevant_tos) and (
+                    PERMISSIONS_KEY_IGNORE_TOS
+                    not in flask.g.auth_user  # backwards compatibility
+                    or has_permission(
+                        flask.g.auth_user,
+                        local_dataset,
+                        required_permission,
+                        ignore_tos=True,
+                    )
+                ):
                     tos_form_url = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
 
                     if is_programmatic_access():
