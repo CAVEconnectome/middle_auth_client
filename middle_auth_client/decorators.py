@@ -228,9 +228,9 @@ def user_has_permission(
         else flask.current_app.config.get("AUTH_TOKEN", "")
     )
 
-    dataset = dataset_from_table_id(resource_namespace, table_id, token, ignore_tos)
+    dataset = dataset_from_table_id(resource_namespace, table_id, token)
 
-    return has_permission(flask.g.auth_user, dataset, permission)
+    return has_permission(flask.g.auth_user, dataset, permission, ignore_tos)
 
 
 def is_programmatic_access():
