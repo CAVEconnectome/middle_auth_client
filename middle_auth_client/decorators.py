@@ -26,6 +26,7 @@ SKIP_CACHE_WINDOW_SEC = int(os.environ.get("TOKEN_CACHE_SKIP_WINDOW_SEC", "300")
 
 AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "false") == "true"
 AUTH_DEBUG = os.environ.get("AUTH_DEBUG", "false") == "true"
+DEBUG_OVERRIDE_DATASET_LOOKUP = os.environ.get("DEBUG_OVERRIDE_DATASET_LOOKUP", None)
 
 MY_PERMISSION_URL = os.environ.get(
     "MIDDLE_AUTH_MY_PERMISSION_URL", "/api/v1/user/cache"
@@ -196,6 +197,8 @@ def table_has_public(table_id, token):
 
 @cachetools.func.ttl_cache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 def dataset_from_table_id(service_namespace, table_id, token):
+    if DEBUG_OVERRIDE_DATASET_LOOKUP is not None:
+        return DEBUG_OVERRIDE_DATASET_LOOKUP
     url = f"https://{AUTH_URL}/api/v1/service/{service_namespace}/table/{table_id}/dataset"
     req = session.get(url, headers={"authorization": "Bearer " + token}, timeout=5)
     if req.status_code == 200:
