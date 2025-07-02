@@ -46,21 +46,6 @@ def debug_print(str):
     if AUTH_DEBUG:
         print(str)
 
-
-def make_api_error(http_status, api_code, msg=None, data=None):
-    res = {"error": api_code}
-
-    if msg is not None:
-        res["message"] = msg
-
-    if data is not None:
-        res["data"] = data
-
-    response = flask.jsonify(res)
-    response.status_code = http_status
-    return response
-
-
 _permission_lookup_override = None
 
 
@@ -72,6 +57,26 @@ def setPermissionLookupOverride(func):
 class AuthorizationError(Exception):
     pass
 
+class MACAuthorizationError(Exception):
+    def __init__(self, http_status, api_code, msg=None, data=None):
+        super().__init__(self, msg)
+        self.http_status = http_status
+        self.api_code = api_code
+        self.msg = msg
+        self.data = data
+
+    def to_response(self):
+        res = {"error": self.api_code}
+
+        if self.msg is not None:
+            res["message"] = self.msg
+
+        if self.data is not None:
+            res["data"] = self.data
+
+        response = flask.jsonify(res)
+        response.status_code = self.http_status
+        return response
 
 def get_usernames(user_ids, token=None):
     if AUTH_DISABLED:
@@ -208,11 +213,42 @@ def dataset_from_table_id(service_namespace, table_id, token):
             f"failed to lookup dataset for service {service_namespace} & table_id: {table_id}: status code {req.status_code}. content: {req.content}"
         )
 
+# some helper code surrounding dataset_from_table_id for use by the decorators 
+def dataset_from_table_id_from_request(table_id, service_token=None, resource_namespace=None):
+    if resource_namespace is None:
+        resource_namespace = flask.current_app.config.get(
+            "AUTH_SERVICE_NAMESPACE", "datastack"
+        )
+    service_token_local = (
+        service_token
+        if service_token
+        else flask.current_app.config.get("AUTH_TOKEN")
+    )
+    try:
+        table_mapping_token = (
+            service_token_local
+            if service_token_local
+            else flask.g.auth_token
+        )
+        return dataset_from_table_id(
+            resource_namespace, table_id, table_mapping_token
+        )
+    except RuntimeError:
+        raise MACAuthorizationError(
+            400,
+            "invalid_table_id",
+            msg="Invalid table_id for service",
+            data={
+                "table_id": table_id,
+                "resource_namespace": resource_namespace,
+            },
+        )
+
 
 def has_permission(auth_user, dataset, permission, ignore_tos=False):
     permissions_key = (
         PERMISSIONS_KEY_IGNORE_TOS
-        if (ignore_tos and PERMISSIONS_KEY_IGNORE_TOS in flask.g.auth_user)
+        if (ignore_tos and PERMISSIONS_KEY_IGNORE_TOS in auth_user)
         else PERMISSIONS_KEY
     )
 
@@ -334,11 +370,11 @@ def auth_required(
 
             if auth_header:
                 if not auth_header.startswith("Bearer "):
-                    resp = make_api_error(
+                    resp = MACAuthorizationError(
                         400,
                         "bad_auth_header",
                         "Authorization header must begin with 'Bearer'",
-                    )
+                    ).to_response()
                     resp.headers["WWW-Authenticate"] = (
                         'Bearer realm="'
                         + AUTHORIZE_URI
@@ -350,9 +386,11 @@ def auth_required(
 
             if programmatic_access:
                 if not token and not flask.g.public_access():
-                    resp = make_api_error(
-                        401, "no_token", "Unauthorized - No Token Provided"
-                    )
+                    resp = MACAuthorizationError(
+                        401,
+                        "no_token",
+                        "Unauthorized - No Token Provided",
+                    ).to_response()
                     resp.headers["WWW-Authenticate"] = (
                         'Bearer realm="' + AUTHORIZE_URI + '"'
                     )
@@ -382,9 +420,9 @@ def auth_required(
                     AUTHORIZE_URI + "?redirect=" + quote(flask.request.url), code=302
                 )
             elif not flask.g.public_access():
-                resp = make_api_error(
+                resp = MACAuthorizationError(
                     401, "invalid_token", "Unauthorized - Token is Invalid or Expired"
-                )
+                ).to_response()
                 resp.headers["WWW-Authenticate"] = (
                     'Bearer realm="'
                     + AUTHORIZE_URI
@@ -427,6 +465,55 @@ def auth_requires_admin(f):
             return f(*args, **kwargs)
 
     return decorated_function
+
+
+def auth_requires_dataset_admin(
+    service_token=None,
+    dataset=None,
+    table_arg="table_id",
+    table_id=None,
+    resource_namespace=None,
+):
+    def decorator(f):
+        @wraps(f)
+        @auth_required
+        def decorated_function(*args, **kwargs):
+            if flask.request.method == "OPTIONS":
+                return f(*args, **kwargs)
+            if AUTH_DISABLED:
+                return f(*args, **kwargs)
+            
+            local_table_id = table_id
+            if local_table_id is None:
+                local_table_id = kwargs.get(table_arg)
+
+            if local_table_id is None and dataset is None:
+                return MACAuthorizationError(400, "missing_table_id", msg="Missing table_id").to_response()
+
+            local_dataset = dataset
+            if local_dataset is None:
+                try:
+                    local_dataset = dataset_from_table_id_from_request(local_table_id, service_token, resource_namespace)
+                except MACAuthorizationError as e:
+                    return e.to_response()
+            if local_dataset in flask.g.auth_user["datasets_admin"]:
+                return f(*args, **kwargs)
+            else:
+                required_role = "dataset_admin"
+                message = "Missing role: {0} for dataset {1}".format(
+                    required_role, local_dataset
+                )
+                return MACAuthorizationError(
+                    403,
+                    "missing_role",
+                    msg=message,
+                    data={
+                        "required_role": required_role,
+                        "auth_dataset": local_dataset,
+                    },
+                ).to_response()
+        return decorated_function
+    return decorator
 
 
 def users_share_common_group(user_id, excluded_groups=None, service_token=None):
@@ -490,41 +577,14 @@ def auth_requires_permission(
                 local_table_id = kwargs.get(table_arg)
 
             if local_table_id is None and dataset is None:
-                return make_api_error(400, "missing_table_id", msg="Missing table_id")
+                return MACAuthorizationError(400, "missing_table_id", msg="Missing table_id").to_response()
 
             local_dataset = dataset
-            local_resource_namespace = resource_namespace
             if local_dataset is None:
-                if local_resource_namespace is None:
-                    local_resource_namespace = flask.current_app.config.get(
-                        "AUTH_SERVICE_NAMESPACE", "datastack"
-                    )
-                service_token_local = (
-                    service_token
-                    if service_token
-                    else flask.current_app.config.get("AUTH_TOKEN")
-                )
                 try:
-                    table_mapping_token = (
-                        service_token_local
-                        if service_token_local
-                        else flask.g.auth_token
-                    )
-                    local_dataset = dataset_from_table_id(
-                        local_resource_namespace, local_table_id, table_mapping_token
-                    )
-                except RuntimeError:
-                    return make_api_error(
-                        400,
-                        "invalid_table_id",
-                        msg="Invalid table_id for service",
-                        data={
-                            "table_id": local_table_id,
-                            "resource_namespace": local_resource_namespace,
-                            "auth_dataset": local_dataset,
-                        },
-                    )
-
+                    local_dataset = dataset_from_table_id_from_request(local_table_id, service_token, resource_namespace)
+                except MACAuthorizationError as e:
+                    return e.to_response()
             # public_access won't be true for edit requests
             if (
                 has_permission(
@@ -571,7 +631,7 @@ def auth_requires_permission(
                     tos_form_url = f"https://{STICKY_AUTH_URL}/api/v1/tos/{relevant_tos[0]['tos_id']}/accept"
 
                     if is_programmatic_access():
-                        return make_api_error(
+                        return MACAuthorizationError(
                             403,
                             "missing_tos",
                             msg="Need to accept Terms of Service to access resource.",
@@ -580,7 +640,7 @@ def auth_requires_permission(
                                 "tos_name": relevant_tos[0]["tos_name"],
                                 "tos_form_url": tos_form_url,
                             },
-                        )
+                        ).to_response()
                     else:
                         return flask.redirect(
                             tos_form_url + "?redirect=" + quote(flask.request.url),
@@ -589,7 +649,7 @@ def auth_requires_permission(
                 message = "Missing permission: {0} for dataset {1}".format(
                     required_permission, local_dataset
                 )
-                resp = make_api_error(
+                resp = MACAuthorizationError(
                     403,
                     "missing_permission",
                     msg=message,
@@ -597,7 +657,7 @@ def auth_requires_permission(
                         "required_permission": required_permission,
                         "auth_dataset": local_dataset,
                     },
-                )
+                ).to_response()
 
                 return resp
 
