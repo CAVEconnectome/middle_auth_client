@@ -266,10 +266,15 @@ def user_has_permission(
         if service_token
         else flask.current_app.config.get("AUTH_TOKEN", "")
     )
-
-    dataset = dataset_from_table_id(resource_namespace, table_id, token)
-
+    
+    try: 
+        dataset = dataset_from_table_id(resource_namespace, table_id, token)
+    except RuntimeError:
+        # log and return false
+        flask.current_app.logger.error(f"Failed to lookup dataset for table_id {table_id} in resource_namespace {resource_namespace}, denying permission {permission}")
+        return False
     return has_permission(flask.g.auth_user, dataset, permission, ignore_tos)
+
 
 
 def is_programmatic_access():
@@ -584,6 +589,7 @@ def auth_requires_permission(
                 try:
                     local_dataset = dataset_from_table_id_from_request(local_table_id, service_token, resource_namespace)
                 except MACAuthorizationError as e:
+                    flask.current_app.logger.error(f"Failed to lookup dataset for table_id {local_table_id} in resource_namespace {resource_namespace}, denying permission {required_permission}")
                     return e.to_response()
             # public_access won't be true for edit requests
             if (
