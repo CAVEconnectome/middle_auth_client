@@ -31,8 +31,5 @@ setup(
     url='https://github.com/seung-lab/middle_auth_client',
     packages=['middle_auth_client'],
     include_package_data=True,
-    extras_require={
-        "redis":["redis"]
-    },
     install_requires=required
 )
