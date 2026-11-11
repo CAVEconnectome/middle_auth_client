@@ -78,6 +78,63 @@ class MACAuthorizationError(Exception):
         response.status_code = self.http_status
         return response
 
+
+class TableMappingError(RuntimeError):
+    """A table could not be resolved to a middle_auth dataset.
+
+    Subclasses RuntimeError so existing `except RuntimeError` callers keep working.
+    """
+
+    kind = "lookup_failed"
+
+    def __init__(self, service_namespace, table_id, detail, status_code=None):
+        self.service_namespace = service_namespace
+        self.table_id = table_id
+        self.detail = detail
+        self.status_code = status_code
+        super().__init__(
+            f"failed to lookup dataset for service {service_namespace} & table_id: "
+            f"{table_id}: {detail}"
+        )
+
+    @property
+    def remediation(self):
+        return "Check the auth server logs and this service's AUTH_TOKEN."
+
+    def to_problem(self):
+        """Plain-dict description, the shape recorded by record_auth_problem()."""
+        return {
+            "namespace": self.service_namespace,
+            "table_id": self.table_id,
+            "kind": self.kind,
+            "message": str(self),
+            "remediation": self.remediation,
+        }
+
+
+class TableMappingNotFound(TableMappingError):
+    """middle_auth has no service table mapping for this table (a setup step was missed)."""
+
+    kind = "unmapped"
+
+    @property
+    def remediation(self):
+        return (
+            f"In middle_auth, add a service table mapping "
+            f"({self.service_namespace}, {self.table_id}) -> <dataset>."
+        )
+
+
+class AuthServiceUnavailable(TableMappingError):
+    """The auth server could not be reached or errored; says nothing about the mapping."""
+
+    kind = "auth_unavailable"
+
+    @property
+    def remediation(self):
+        return f"Check that the auth server at {AUTH_URL} is up and reachable from this service."
+
+
 def get_usernames(user_ids, token=None):
     if AUTH_DISABLED:
         return []
@@ -205,44 +262,75 @@ def dataset_from_table_id(service_namespace, table_id, token):
     if DEBUG_OVERRIDE_DATASET_LOOKUP is not None:
         return DEBUG_OVERRIDE_DATASET_LOOKUP
     url = f"https://{AUTH_URL}/api/v1/service/{service_namespace}/table/{table_id}/dataset"
-    req = session.get(url, headers={"authorization": "Bearer " + token}, timeout=5)
+    try:
+        req = session.get(url, headers={"authorization": "Bearer " + token}, timeout=5)
+    except requests.RequestException as e:
+        raise AuthServiceUnavailable(
+            service_namespace, table_id, f"auth server unreachable: {e}"
+        ) from e
     if req.status_code == 200:
         return req.json()
-    else:
-        raise RuntimeError(
-            f"failed to lookup dataset for service {service_namespace} & table_id: {table_id}: status code {req.status_code}. content: {req.content}"
-        )
+    detail = f"status code {req.status_code}. content: {req.content}"
+    if req.status_code == 404:
+        raise TableMappingNotFound(service_namespace, table_id, detail, req.status_code)
+    if req.status_code >= 500:
+        raise AuthServiceUnavailable(service_namespace, table_id, detail, req.status_code)
+    raise TableMappingError(service_namespace, table_id, detail, req.status_code)
 
-# some helper code surrounding dataset_from_table_id for use by the decorators 
-def dataset_from_table_id_from_request(table_id, service_token=None, resource_namespace=None):
+
+def _resolve_namespace(resource_namespace):
     if resource_namespace is None:
-        resource_namespace = flask.current_app.config.get(
-            "AUTH_SERVICE_NAMESPACE", "datastack"
-        )
-    service_token_local = (
+        return flask.current_app.config.get("AUTH_SERVICE_NAMESPACE", "datastack")
+    return resource_namespace
+
+
+def _table_mapping_token(service_token=None):
+    return (
         service_token
-        if service_token
-        else flask.current_app.config.get("AUTH_TOKEN")
+        or flask.current_app.config.get("AUTH_TOKEN")
+        or flask.g.get("auth_token")
+        or ""
     )
+
+
+def mapping_error_to_mac(e):
+    """The API error a service should return for a TableMappingError.
+
+    An unmapped table keeps the historical 400 "invalid_table_id" code so existing clients are
+    unaffected, but now says what is wrong and how to fix it. An auth outage is a 503, not a 400.
+    """
+    data = {
+        "table_id": e.table_id,
+        "resource_namespace": e.service_namespace,
+        "kind": e.kind,
+        "remediation": e.remediation,
+    }
+    if isinstance(e, AuthServiceUnavailable):
+        return MACAuthorizationError(
+            503,
+            "auth_service_unavailable",
+            msg="Could not reach the auth server to look up this table's dataset",
+            data=data,
+        )
+    if isinstance(e, TableMappingNotFound):
+        msg = (
+            f"Table '{e.table_id}' is not mapped to a dataset for service "
+            f"'{e.service_namespace}'"
+        )
+    else:
+        msg = "Invalid table_id for service"
+    return MACAuthorizationError(400, "invalid_table_id", msg=msg, data=data)
+
+
+# some helper code surrounding dataset_from_table_id for use by the decorators
+def dataset_from_table_id_from_request(table_id, service_token=None, resource_namespace=None):
+    resource_namespace = _resolve_namespace(resource_namespace)
     try:
-        table_mapping_token = (
-            service_token_local
-            if service_token_local
-            else flask.g.auth_token
-        )
         return dataset_from_table_id(
-            resource_namespace, table_id, table_mapping_token
+            resource_namespace, table_id, _table_mapping_token(service_token)
         )
-    except RuntimeError:
-        raise MACAuthorizationError(
-            400,
-            "invalid_table_id",
-            msg="Invalid table_id for service",
-            data={
-                "table_id": table_id,
-                "resource_namespace": resource_namespace,
-            },
-        )
+    except TableMappingError as e:
+        raise mapping_error_to_mac(e) from e
 
 
 def has_permission(auth_user, dataset, permission, ignore_tos=False):
@@ -255,25 +343,77 @@ def has_permission(auth_user, dataset, permission, ignore_tos=False):
     return permission in auth_user.get(permissions_key, {}).get(dataset, [])
 
 
+def is_global_admin():
+    """True if the current request's user is a middle_auth superadmin."""
+    return bool(flask.g.get("auth_user", {}).get("admin", False))
+
+
+def record_auth_problem(problem):
+    """Note a configuration problem found while serving this request.
+
+    `problem` is the dict shape of TableMappingError.to_problem(). Services decide what to show;
+    the convention is to surface auth_problems() to global admins only.
+    """
+    problems = flask.g.get("auth_problems")
+    if problems is None:
+        problems = []
+        flask.g.auth_problems = problems
+    key = (problem.get("namespace"), problem.get("table_id"), problem.get("kind"))
+    if not any((p.get("namespace"), p.get("table_id"), p.get("kind")) == key for p in problems):
+        problems.append(problem)
+
+
+def auth_problems():
+    """Problems recorded during this request (see record_auth_problem)."""
+    return list(flask.g.get("auth_problems", []))
+
+
 def user_has_permission(
     permission, table_id, resource_namespace, service_token=None, ignore_tos=False
 ):
+    """Whether the current user has `permission` on the dataset `table_id` maps to.
+
+    Never raises for lookup failures: an unmapped table, or an unreachable auth server, means
+    no permission. The failure is logged and recorded with record_auth_problem().
+    """
     if AUTH_DISABLED:
         return True
 
-    token = (
-        service_token
-        if service_token
-        else flask.current_app.config.get("AUTH_TOKEN", "")
-    )
-    
-    try: 
-        dataset = dataset_from_table_id(resource_namespace, table_id, token)
-    except RuntimeError:
-        # log and return false
-        flask.current_app.logger.error(f"Failed to lookup dataset for table_id {table_id} in resource_namespace {resource_namespace}, denying permission {permission}")
+    try:
+        dataset = dataset_from_table_id(
+            resource_namespace, table_id, _table_mapping_token(service_token)
+        )
+    except TableMappingError as e:
+        flask.current_app.logger.error(f"{e}; denying permission {permission}")
+        record_auth_problem(e.to_problem())
         return False
     return has_permission(flask.g.auth_user, dataset, permission, ignore_tos)
+
+
+def filter_permitted(
+    items,
+    permission,
+    resource_namespace,
+    name=lambda item: item,
+    service_token=None,
+    ignore_tos=False,
+):
+    """The items the current user has `permission` on; `name(item)` gives the table id.
+
+    Meant for list views: one item with a missing mapping is dropped (and recorded), instead of
+    failing the whole response.
+    """
+    return [
+        item
+        for item in items
+        if user_has_permission(
+            permission,
+            name(item),
+            resource_namespace,
+            service_token=service_token,
+            ignore_tos=ignore_tos,
+        )
+    ]
 
 
 
@@ -562,7 +702,20 @@ def auth_requires_permission(
     table_id=None,
     resource_namespace=None,
     ignore_tos=False,
+    on_unmapped="error",
 ):
+    """Require `required_permission` on the dataset the request's table maps to.
+
+    on_unmapped: what to do when the table has no middle_auth mapping.
+      "error" (default): respond 400 invalid_table_id, explaining the missing mapping.
+      "admin_passthrough": global admins reach the view (with the problem recorded in
+        auth_problems() so the view can explain it); everyone else gets 403, as if they had no
+        permission. Useful for pages admins need while a dataset is being set up.
+    An unreachable auth server is a 503 in both modes.
+    """
+    if on_unmapped not in ("error", "admin_passthrough"):
+        raise ValueError(f"on_unmapped must be 'error' or 'admin_passthrough', not {on_unmapped!r}")
+
     def decorator(f):
         @wraps(f)
         @auth_required(
@@ -587,10 +740,24 @@ def auth_requires_permission(
             local_dataset = dataset
             if local_dataset is None:
                 try:
-                    local_dataset = dataset_from_table_id_from_request(local_table_id, service_token, resource_namespace)
-                except MACAuthorizationError as e:
-                    flask.current_app.logger.error(f"Failed to lookup dataset for table_id {local_table_id} in resource_namespace {resource_namespace}, denying permission {required_permission}")
-                    return e.to_response()
+                    local_dataset = dataset_from_table_id(
+                        _resolve_namespace(resource_namespace),
+                        local_table_id,
+                        _table_mapping_token(service_token),
+                    )
+                except TableMappingError as e:
+                    flask.current_app.logger.error(f"{e}; denying permission {required_permission}")
+                    record_auth_problem(e.to_problem())
+                    if on_unmapped == "admin_passthrough" and isinstance(e, TableMappingNotFound):
+                        if is_global_admin():
+                            return f(*args, **kwargs)
+                        return MACAuthorizationError(
+                            403,
+                            "missing_permission",
+                            msg=f"Missing permission: {required_permission}",
+                            data={"required_permission": required_permission},
+                        ).to_response()
+                    return mapping_error_to_mac(e).to_response()
             # public_access won't be true for edit requests
             if (
                 has_permission(
